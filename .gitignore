@@ -1,0 +1,6 @@
+# Arduino / editor clutter
+build/
+*.bin
+*.elf
+.DS_Store
+__pycache__/
