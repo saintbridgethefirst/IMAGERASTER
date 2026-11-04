@@ -29,6 +29,7 @@ so we switched to back and forth for imaging. Keep U-turns as a comparison for y
 | `WebDashboard.h / .cpp` | New: web server on port **8080** (port 80 stays the template's telemetry). |
 | `dashboard_html.h` | Generated from `dashboard/dashboard.html`. Do not edit by hand. |
 | `dashboard/` | Dashboard source and `make_header.py`. The Arduino IDE ignores this folder. |
+| `DigitalTwin/` | The Processing Digital Twin of this scan (see below). The Arduino IDE ignores it. |
 | Everything else | Unchanged files from the SEMTM0043 StampC3 template ([paulodowd/RoboticsScienceAndSystems](https://github.com/paulodowd/RoboticsScienceAndSystems)). |
 
 ## Set up and upload
@@ -138,6 +139,20 @@ Things to know for big scans:
     left by (1 − e × separation / D²).
 - **Paper.** Tape all corners flat. A curled sheet changes the sensor height and the readings.
   Fresh batteries help the robot keep a steady speed on long runs.
+
+## Digital Twin
+
+`DigitalTwin/` is the unit's Processing Digital Twin with this raster controller ported into it
+(`Controller.pde` mirrors `Controller.cpp`), a printable A3 test sheet that matches the sim surface,
+a physical model to update with your Phase 1 results (`ModelParameters.pde`), and a live comparison
+mode that runs the twin alongside the real robot and compares the two rebuilt images.
+See [DigitalTwin/README.md](DigitalTwin/README.md).
+
+The firmware's telemetry *signal* column (column 14) is 1 only while a scan runs, so the twin can
+start and end with each robot scan.
+
+The template code (StampC3 and Digital Twin) is from the unit's repository, which is licensed under
+GPL-3.0; files derived from it carry that licence when shared.
 
 ## Getting a crisp image (no re-scan needed)
 

@@ -170,6 +170,7 @@ void Controller_c::update(Robot_c &robot, RobotWifiAP_c &server) {
     if (isRunning()) {
       robot.setMotorPWM(0, 0);
       mode = STOPPED;
+      signal = 0;  // telemetry: 1 only while scanning (the Digital Twin starts/ends on it)
       message = "Stopped by user";
     }
   }
@@ -410,6 +411,7 @@ void Controller_c::settleThen(Robot_c &robot, unsigned long now, unsigned long d
 void Controller_c::finish(Robot_c &robot, const char *why) {
   robot.setMotorPWM(0, 0);
   mode = FINISHED;
+  signal = 0;
   message = why;
   robot.playTone(880, 300);
 }
@@ -417,6 +419,7 @@ void Controller_c::finish(Robot_c &robot, const char *why) {
 void Controller_c::fail(Robot_c &robot, const char *why) {
   robot.setMotorPWM(0, 0);
   mode = STOPPED;
+  signal = 0;
   message = why;
   robot.playTone(300, 500);
 }

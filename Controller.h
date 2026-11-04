@@ -121,7 +121,7 @@ class Controller_c {
     /** @brief Returns to WAITING. Sends no motor command (same as template). */
     void reset();
 
-    /** @brief 1 while a scan has been started, 0 while waiting. */
+    /** @brief 1 while a scan runs, 0 otherwise (telemetry column 14; the Digital Twin syncs on it). */
     uint8_t getSignal() const;
 
     /** @brief Non-zero starts a scan (if idle); zero returns to waiting. */
