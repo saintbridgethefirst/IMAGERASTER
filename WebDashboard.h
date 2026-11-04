@@ -19,6 +19,7 @@
  *   /          the dashboard page (dashboard_html.h)
  *   /status    JSON: mode, row, pose, live DN1..DN5, log size, settings
  *   /data      CSV rows of the scan log: /data?from=N returns samples N..N+249
+ *              (the log is a ring buffer; the page downloads while the robot scans)
  *   /start     start a scan (same as pressing the StampC3 button when idle)
  *   /stop      stop the robot
  *   /clear     empty the scan log (only when not running)

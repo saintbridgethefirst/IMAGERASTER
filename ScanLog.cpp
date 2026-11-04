@@ -1,6 +1,6 @@
 #include "ScanLog.h"
 
-ScanLog_c::ScanLog_c() : samples(nullptr), cap(0), n(0) {
+ScanLog_c::ScanLog_c() : samples(nullptr), cap(0), total(0), sent(0), lost(0) {
 }
 
 uint32_t ScanLog_c::begin(uint32_t requested_capacity, uint32_t keep_free_bytes) {
@@ -21,6 +21,7 @@ uint32_t ScanLog_c::begin(uint32_t requested_capacity, uint32_t keep_free_bytes)
     }
     want -= 250;
   }
+  clear();
   return cap;
 }
 
@@ -30,33 +31,49 @@ void ScanLog_c::release() {
     samples = nullptr;
   }
   cap = 0;
-  n = 0;
+  clear();
 }
 
 void ScanLog_c::clear() {
-  n = 0;
+  total = 0;
+  sent = 0;
+  lost = 0;
 }
 
-bool ScanLog_c::add(const ScanSample_t &sample) {
-  if (samples == nullptr || n >= cap) {
-    return false;
+void ScanLog_c::add(const ScanSample_t &sample) {
+  if (samples == nullptr || cap == 0) {
+    lost++;
+    return;
   }
-  samples[n++] = sample;
-  return true;
+  if (total >= cap) {
+    // The slot being reused holds sample (total - cap). Count it as lost if
+    // no client has downloaded it yet.
+    if (total - cap >= sent) lost++;
+  }
+  samples[total % cap] = sample;
+  total++;
 }
 
 uint32_t ScanLog_c::count() const {
-  return n;
+  return total;
+}
+
+uint32_t ScanLog_c::oldest() const {
+  return total > cap ? total - cap : 0;
 }
 
 uint32_t ScanLog_c::capacity() const {
   return cap;
 }
 
-bool ScanLog_c::isFull() const {
-  return n >= cap;
+const ScanSample_t &ScanLog_c::get(uint32_t seq) const {
+  return samples[seq % cap];
 }
 
-const ScanSample_t &ScanLog_c::get(uint32_t i) const {
-  return samples[i];
+void ScanLog_c::markSent(uint32_t seq_end) {
+  if (seq_end > sent) sent = seq_end;
+}
+
+uint32_t ScanLog_c::dropped() const {
+  return lost;
 }

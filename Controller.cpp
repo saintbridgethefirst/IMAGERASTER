@@ -111,7 +111,7 @@ bool Controller_c::setConfig(const RasterConfig_t &c) {
     return false;
   }
   // Reject values that would make the robot do something silly.
-  if (c.rows < 1 || c.rows > 40) return false;
+  if (c.rows < 1 || c.rows > 150) return false;
   if (!(c.row_length_mm >= 20.0f && c.row_length_mm <= 1500.0f)) return false;
   if (!(c.row_pitch_mm >= 2.0f && c.row_pitch_mm <= 300.0f)) return false;
   if (!(c.scan_pwm >= 5.0f && c.scan_pwm <= 120.0f)) return false;
@@ -477,8 +477,12 @@ void Controller_c::logSample(Robot_c &robot, unsigned long now) {
   s.state = (uint8_t)mode;
   s.row = row;
 
-  if (!scan_log.add(s)) {
-    fail(robot, "Log full: scan stopped. Use fewer/shorter rows");
+  // The log is a ring buffer that the dashboard empties while the scan runs.
+  // If nobody is downloading, the oldest samples are overwritten: warn once.
+  uint32_t lost_before = scan_log.dropped();
+  scan_log.add(s);
+  if (lost_before == 0 && scan_log.dropped() > 0) {
+    message = "Scan bigger than robot memory and no dashboard open: oldest samples lost";
   }
 }
 

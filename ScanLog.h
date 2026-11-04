@@ -21,10 +21,13 @@ struct ScanSample_t {
 };
 
 /**
- * @brief Fixed-size in-memory store of one scan run.
+ * @brief Ring buffer of the current scan run.
  *
- * Samples are kept until the next run starts so the dashboard can download a
- * complete run even if it was opened late or the WiFi dropped for a while.
+ * Every sample gets a sequence number (0, 1, 2, ...). The buffer keeps the
+ * newest capacity() samples. The dashboard downloads samples while the scan
+ * runs, so a scan can be much longer than the buffer as long as the
+ * dashboard stays open. Samples overwritten before anyone downloaded them
+ * are counted by dropped().
  */
 class ScanLog_c {
   public:
@@ -41,23 +44,35 @@ class ScanLog_c {
     /** @brief Frees the storage (capacity becomes 0). */
     void release();
 
-    /** @brief Forgets all samples (storage is kept). */
+    /** @brief Starts a new run: forgets all samples (storage is kept). */
     void clear();
 
-    /** @brief Appends one sample. Returns false when the log is full. */
-    bool add(const ScanSample_t &sample);
+    /** @brief Appends one sample, overwriting the oldest when the buffer is full. */
+    void add(const ScanSample_t &sample);
 
+    /** @brief Total samples logged this run (next sequence number). */
     uint32_t count() const;
-    uint32_t capacity() const;
-    bool isFull() const;
 
-    /** @brief Returns sample i (0 <= i < count()). */
-    const ScanSample_t &get(uint32_t i) const;
+    /** @brief Oldest sequence number still stored. */
+    uint32_t oldest() const;
+
+    uint32_t capacity() const;
+
+    /** @brief Returns the sample with sequence number seq (oldest() <= seq < count()). */
+    const ScanSample_t &get(uint32_t seq) const;
+
+    /** @brief Records that a client has downloaded every sample before seq_end. */
+    void markSent(uint32_t seq_end);
+
+    /** @brief Samples overwritten before any client downloaded them. */
+    uint32_t dropped() const;
 
   private:
     ScanSample_t *samples;
     uint32_t cap;
-    uint32_t n;
+    uint32_t total;
+    uint32_t sent;
+    uint32_t lost;
 };
 
 #endif

@@ -56,7 +56,7 @@ void WebDashboard_c::handleStatus() {
   char buf[512];
   snprintf(buf, sizeof(buf),
     "{\"run\":%lu,\"mode\":%u,\"mode_name\":\"%s\",\"row\":%u,"
-    "\"n\":%lu,\"cap\":%lu,\"ms\":%lu,"
+    "\"n\":%lu,\"cap\":%lu,\"oldest\":%lu,\"dropped\":%lu,\"ms\":%lu,"
     "\"x\":%.1f,\"y\":%.1f,\"th\":%.4f,"
     "\"dn\":[%u,%u,%u,%u,%u],\"msg\":\"%s\",\"cfg\":",
     (unsigned long)controller.getRunId(),
@@ -65,6 +65,8 @@ void WebDashboard_c::handleStatus() {
     (unsigned)controller.getRow(),
     (unsigned long)controller.scan_log.count(),
     (unsigned long)controller.scan_log.capacity(),
+    (unsigned long)controller.scan_log.oldest(),
+    (unsigned long)controller.scan_log.dropped(),
     (unsigned long)millis(),
     p.x, p.y, p.theta,
     robot.surface.reading[0], robot.surface.reading[1], robot.surface.reading[2],
@@ -78,12 +80,14 @@ void WebDashboard_c::handleStatus() {
 
 void WebDashboard_c::handleData() {
   uint32_t n = controller.scan_log.count();
+  uint32_t oldest = controller.scan_log.oldest();
   uint32_t from = 0;
   if (web.hasArg("from")) {
     long requested = web.arg("from").toInt();
     from = requested > 0 ? (uint32_t)requested : 0;
   }
   if (from > n) from = n;
+  if (from < oldest) from = oldest;   // older samples have been overwritten
   uint32_t to = from + MAX_ROWS_PER_REQUEST;
   if (to > n) to = n;
 
@@ -92,8 +96,9 @@ void WebDashboard_c::handleData() {
   char line[128];
 
   // Header line: lets the page notice when a new run has started.
-  snprintf(line, sizeof(line), "#run=%lu,n=%lu,from=%lu\n",
-           (unsigned long)controller.getRunId(), (unsigned long)n, (unsigned long)from);
+  snprintf(line, sizeof(line), "#run=%lu,n=%lu,from=%lu,oldest=%lu,dropped=%lu\n",
+           (unsigned long)controller.getRunId(), (unsigned long)n, (unsigned long)from,
+           (unsigned long)oldest, (unsigned long)controller.scan_log.dropped());
   out += line;
 
   // seq,t_ms,x,y,theta,dn1,dn2,dn3,dn4,dn5,state,row
@@ -105,6 +110,7 @@ void WebDashboard_c::handleData() {
     out += line;
   }
 
+  controller.scan_log.markSent(to);
   addCommonHeaders();
   web.send(200, "text/plain", out);
 }

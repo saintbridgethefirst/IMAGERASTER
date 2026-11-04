@@ -366,7 +366,7 @@ label.file span {
             <div class="fields">
               <div class="field wide"><label for="cfg-pattern">Path</label>
                 <select id="cfg-pattern"><option value="0">Back and forth, no turns (sharper)</option><option value="1">U-turns at row ends</option></select></div>
-              <div class="field"><label for="cfg-rows">Rows</label><input id="cfg-rows" type="number" min="1" max="40" step="1" value="17"></div>
+              <div class="field"><label for="cfg-rows">Rows</label><input id="cfg-rows" type="number" min="1" max="150" step="1" value="17"></div>
               <div class="field"><label for="cfg-row_len">Row length (mm)</label><input id="cfg-row_len" type="number" min="20" max="1500" step="1" value="160"></div>
               <div class="field"><label for="cfg-pitch">Row pitch (mm)</label><input id="cfg-pitch" type="number" min="2" max="300" step="0.5" value="7"></div>
               <div class="field"><label for="cfg-side">Next row is on</label>
@@ -479,7 +479,7 @@ label.file span {
   const SERIES = ['--s1', '--s2', '--s3', '--s4', '--s5'];
 
   const sets = {
-    live: { samples: [], run: 0, name: 'Live robot data' },
+    live: { samples: [], run: 0, nextSeq: 0, lost: 0, name: 'Live robot data' },
     demo: { samples: [], full: [], run: 0, name: 'Demo data (simulated)' },
     file: { samples: [], run: 0, name: '' },
   };
@@ -1001,10 +1001,12 @@ label.file span {
       secs = R * rowT + (R - 1) * (shiftT + 2 * turnT + 1.2) + 1;
     }
     const cap = robotStatus && robotStatus.cap ? robotStatus.cap : null;
-    let txt = `Needs about ${Math.round(samples / 50) * 50} samples, ${Math.round(secs)} s` + (measured ? ' (speed from your last scan).' : '.');
-    if (cap) txt += ` The robot holds ${cap}.`;
+    const mins = secs >= 90 ? `${Math.floor(secs / 60)} min ${Math.round(secs % 60)} s` : `${Math.round(secs)} s`;
+    let txt = `About ${mins} and ${Math.round(samples / 50) * 50} samples` + (measured ? ' (speed from your last scan).' : '.');
+    const big = cap && samples > 0.92 * cap;
+    if (big) txt += ` That's more than the robot's ${cap}-sample memory, so keep this page open on the robot's WiFi until the scan ends.`;
     $('scan-est').textContent = txt;
-    $('scan-est').style.color = cap && samples > 0.92 * cap ? 'var(--bad)' : '';
+    $('scan-est').style.color = big ? 'var(--warn)' : '';
   }
   function syncPatternFields() {
     const uturn = $('cfg-pattern').value === '1';
@@ -1198,7 +1200,10 @@ label.file span {
       $('st-n').textContent = String(robotStatus.n);
       $('st-meter').style.width = robotStatus.cap ? (100 * robotStatus.n / robotStatus.cap) + '%' : '0';
       $('run-id').textContent = robotStatus.run ? 'Run ' + robotStatus.run : 'No run yet';
-      setMsg($('run-msg'), robotStatus.msg, robotStatus.mode === 7);
+      const lost = sets.live.lost;
+      setMsg($('run-msg'), lost
+        ? `${robotStatus.msg}. ${lost} samples were overwritten before this page downloaded them (page closed or WiFi dropped during a long scan).`
+        : robotStatus.msg, robotStatus.mode === 7 || lost > 0);
       setBars(robotStatus.dn);
     } else {
       const last = S[S.length - 1];
@@ -1281,22 +1286,29 @@ label.file span {
     let more = false;
     if (connected) {
       try {
+        // The robot keeps a ring buffer and this page downloads it while the
+        // robot scans, so a scan can be longer than the robot's memory.
         const live = sets.live;
-        const r = await robotFetch('/data?from=' + live.samples.length);
+        const r = await robotFetch('/data?from=' + live.nextSeq);
         const lines = (await r.text()).split('\n');
         const head = Object.fromEntries((lines[0] || '').replace('#', '').split(',').map((kv) => kv.split('=')));
-        const run = +head.run, n = +head.n, from = +head.from;
+        const run = +head.run, n = +head.n;
         if (run !== live.run) {
-          live.run = run; live.samples = [];
+          // New run: start again from its first sample.
+          const first = live.run === 0 && live.nextSeq === 0;
+          live.run = run; live.samples = []; live.nextSeq = 0; live.lost = 0;
           if (run > 0 && view !== 'live') view = 'live';
-          if (from !== 0) { more = true; throw new Error('restart'); }
+          if (!first) { more = true; throw new Error('restart'); }
         }
+        if (n < live.nextSeq) { live.samples = []; live.nextSeq = 0; live.lost = 0; }  // robot log was cleared
         for (let i = 1; i < lines.length; i++) {
           const s = parseRow(lines[i].split(','), 'robot');
-          if (s && s.seq === live.samples.length) live.samples.push(s);
+          if (!s || s.seq < live.nextSeq) continue;
+          if (s.seq > live.nextSeq) live.lost += s.seq - live.nextSeq;   // overwritten before we got them
+          live.samples.push(s);
+          live.nextSeq = s.seq + 1;
         }
-        if (n < live.samples.length) live.samples.length = 0;  // robot log was cleared
-        more = live.samples.length < n;
+        more = live.nextSeq < n;
         if (view === 'live') render();
       } catch (e) { /* retry on next poll */ }
     }
@@ -1320,7 +1332,7 @@ label.file span {
   $('btn-stop').addEventListener('click', () => robotCommand('/stop', $('run-msg'), 'Stop sent.'));
   $('btn-clear').addEventListener('click', async () => {
     const j = await robotCommand('/clear', $('run-msg'), 'Robot log cleared.');
-    if (j && j.ok) { sets.live.samples = []; render(true); }
+    if (j && j.ok) { sets.live.samples = []; sets.live.nextSeq = 0; sets.live.lost = 0; render(true); }
   });
   $('cfg-form').addEventListener('input', () => { cfgDirty = true; setMsg($('cfg-msg'), 'Not sent yet'); syncPatternFields(); updateEstimate(); });
   $('cfg-form').addEventListener('change', () => { syncPatternFields(); updateEstimate(); });
@@ -1597,12 +1609,14 @@ label.file span {
   // Fit sensor delay and the DN1/DN5, DN2/DN4 positions to this scan by making
   // readings that land in the same place agree (DN3 is the fixed reference).
   $('btn-autoalign').addEventListener('click', () => {
-    const S = sets[view].samples;
+    const S0 = sets[view].samples;
     const msg = $('align-msg');
-    if (S.filter((x) => x.state === SCAN_ROW).length < 200) { setMsg(msg, 'Scan something first.', true); return; }
+    if (S0.filter((x) => x.state === SCAN_ROW).length < 200) { setMsg(msg, 'Scan something first.', true); return; }
     setMsg(msg, 'Calibrating…');
     setTimeout(() => {
       const o = imageOpts();
+      // Long scans: calibrate on every k-th sample so this stays around a second.
+      const S = S0.length > 5000 ? S0.filter((_, i) => i % Math.ceil(S0.length / 5000) === 0) : S0;
       const L = o.sensors.map((p) => p.slice());
       let delay = o.delay || 0;
       const base = { ...o, cell: 2, foot: 4, use: 'scan', useSensor: [true, true, true, true, true], deblur: 0 };

@@ -25,7 +25,7 @@ so we switched to back and forth for imaging. Keep U-turns as a comparison for y
 |---|---|
 | `ImageRaster.ino` | Template `.ino` plus the dashboard. **Change the WiFi name here.** |
 | `Controller.h / .cpp` | Line follower replaced by the raster state machine. Same public shape (`update()`, `setSignal()`, `odometry`). The 14-column Serial/TCP telemetry is unchanged, so the Digital Twin still reads it. |
-| `ScanLog.h / .cpp` | New: keeps every sample of a run in RAM (up to 5000; reserved before WiFi starts). |
+| `ScanLog.h / .cpp` | New: ring buffer of the current run (up to 5000 samples, reserved before WiFi starts). The dashboard downloads it while the robot scans, so scans can be longer. |
 | `WebDashboard.h / .cpp` | New: web server on port **8080** (port 80 stays the template's telemetry). |
 | `dashboard_html.h` | Generated from `dashboard/dashboard.html`. Do not edit by hand. |
 | `dashboard/` | Dashboard source and `make_header.py`. The Arduino IDE ignores this folder. |
@@ -103,8 +103,41 @@ When it is not connected to a robot it shows a simulated scan so you can explore
 | Shapes smeared into horizontal stripes | The sensor position table doesn't match the robot. |
 | Rows shifted against each other | Wheel radius / separation not calibrated, or the sensor positions are wrong. |
 | The image is mirrored or stretched | Sensor positions are wrong, or *Next row is on* is the wrong side. |
-| "Log full" | Use fewer or shorter rows, or a larger `LOG_INTERVAL_MS` in `Controller.h`. |
+| "...samples were overwritten" | The scan was bigger than the robot's memory and the page wasn't downloading (closed, or the laptop left the robot's WiFi). Keep the page open for big scans. |
 | The page does not load | Check you are on the robot's WiFi and include `:8080` in the address. |
+
+## Scanning a bigger area
+
+The scan area is set entirely from **Scan settings**, with no code changes:
+
+- **Width** (along the rows) = **Row length**. Make it the template width + about 20 mm.
+- **Height** (across the rows) = (**Rows** − 1) × **Row pitch** + about 18 mm (the DN2–DN4 span).
+  So **Rows** = (height − 18) / pitch + 1.
+- The estimate under the pattern settings shows the time and the number of samples.
+
+| Template (area scanned) | Row length | Pitch | Rows | Time at ~58 mm/s |
+|---|---|---|---|---|
+| Your current sheet (~160 × 130 mm) | 160 | 7 | 17 | ~1.5 min |
+| Full A4 page (~200 × 270 mm) | 200 | 7 | 37 | ~3.5 min |
+| Full A4, faster | 200 | 13.5 | 19 | ~1.8 min |
+| A3 landscape (~400 × 280 mm) | 400 | 13.5 | 20 | ~3 min |
+
+Things to know for big scans:
+
+- **Keep the dashboard open on the robot's WiFi until the scan ends.** The robot only holds
+  about 4000 samples (about 80 s) and the page downloads them as it goes. If the page is closed,
+  the oldest samples are overwritten and the page says how many were lost.
+- **Table space.** The robot drives the run-in (50 mm) plus its own radius (~50 mm) past both
+  ends of every row, so leave ~10 cm of flat table on both sides of the template. Leave ~6 cm
+  beyond the first and last rows.
+- **Odometry error grows with distance.** On a large area, calibrate the wheels:
+  - *Distance:* scan 1 row of 400 mm along a ruler. If the robot really travelled D mm, set both
+    wheel radii to 16 × D / 400.
+  - *Straightness:* in the same run, measure how far the robot ended up to the side, e (mm,
+    positive if it drifted left). Multiply the right radius by (1 + e × separation / D²) and the
+    left by (1 − e × separation / D²).
+- **Paper.** Tape all corners flat. A curled sheet changes the sensor height and the readings.
+  Fresh batteries help the robot keep a steady speed on long runs.
 
 ## Getting a crisp image (no re-scan needed)
 

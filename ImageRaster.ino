@@ -18,7 +18,7 @@
 
 // WiFi name (make it unique) and password (at least 8 characters).
 // Port 80 is the template's TCP telemetry; the dashboard uses port 8080.
-RobotWifiAP_c server("RasterBot-1", "change-me-123", 80);   // set your own name and password
+RobotWifiAP_c server("RasterBot-1", "change-me-123", 80);
 
 #include "Robot.h"
 #include "RobotIMU.h"
@@ -34,7 +34,8 @@ Controller_c controller;
 /** @brief Web page + data server for the dashboard. */
 WebDashboard_c dashboard(robot, controller, 8080);
 
-/** How many samples to keep per scan (each is 28 bytes; 5000 = 140 KB). */
+/** Ring-buffer size (each sample is 28 bytes; 5000 = 140 KB). With the dashboard
+ *  open, samples are downloaded during the scan, so scans can be longer than this. */
 static const uint32_t SCAN_LOG_SAMPLES = 5000;
 /** Heap left free for WiFi and the web server after the log is allocated. */
 static const uint32_t HEAP_FOR_WIFI_BYTES = 110000;
@@ -74,7 +75,7 @@ void setup() {
     Serial.print(server.ip());
     Serial.println(":8080");
   }
-  Serial.printf("Scan log holds %lu samples (%.0f s of straight driving). Free heap %lu bytes.\n",
+  Serial.printf("Scan buffer %lu samples (%.0f s without the dashboard open). Free heap %lu bytes.\n",
                 (unsigned long)capacity,
                 capacity * Controller_c::LOG_INTERVAL_MS / 1000.0f,
                 (unsigned long)ESP.getFreeHeap());
