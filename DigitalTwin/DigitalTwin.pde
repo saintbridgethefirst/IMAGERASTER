@@ -12,7 +12,8 @@ import java.net.*;
  * Put your Phase 1 measurements in ModelParameters.pde.
  *
  * Keys: S scan, X stop, N 10 repeats, F fast, P nominal/calibrated model,
- *       I load your own picture as the sheet (also writes a printable PDF),
+ *       I load your own picture as the sheet (rotate/crop it, then a printable PDF is written),
+ *       E rotate/crop that picture again,
  *       L load a robot scan CSV (the dashboard's Download CSV),
  *       O lay the robot's or the twin's rebuild over the sheet,
  *       C copy the robot's scan settings, M sandbox/live comparison,
@@ -55,7 +56,25 @@ void draw() {
 }
 
 void keyPressed() {
+  // Esc normally quits a Processing sketch: while editing a picture it cancels instead.
+  if (key == ESC && simulator.editing) {
+    key = 0;
+    simulator.cancelEdit();
+    return;
+  }
   simulator.handleKey(key, keyCode);
+}
+
+void mousePressed() {
+  if (simulator.editing) simulator.editor.mousePressed(mouseX, mouseY);
+}
+
+void mouseDragged() {
+  if (simulator.editing) simulator.editor.mouseDragged(mouseX, mouseY);
+}
+
+void mouseReleased() {
+  if (simulator.editing) simulator.editor.mouseReleased();
 }
 
 /** @brief Called by the L key's file dialog (on another thread). */

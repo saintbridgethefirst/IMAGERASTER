@@ -75,6 +75,8 @@ class Simulator {
   // ---- A saved robot scan, loaded with L (dashboard "Download CSV") ---------
   volatile File pendingCsv = null;
   volatile File pendingSheet = null;
+  PictureEditor_c editor = new PictureEditor_c();
+  boolean editing = false;
   boolean realFromFile = false;
   /** O cycles what is laid over the sheet: 0 nothing, 1 robot rebuild, 2 twin rebuild. */
   int overlay = 0;
@@ -160,6 +162,7 @@ class Simulator {
 
   void update() {
     updateTcpConnection();
+    if (editing) return;   // the model waits while you rotate/crop a picture
     applyFetchedConfig();
     if (pendingSheet != null) {
       File f = pendingSheet;
@@ -646,6 +649,10 @@ class Simulator {
   // ======================================================================
 
   void draw() {
+    if (editing) {
+      editor.draw();
+      return;
+    }
     background(180);
     updateSurfaceViewportCache();
 
@@ -835,6 +842,11 @@ class Simulator {
   // ======================================================================
 
   void handleKey(char pressedKey, int pressedKeyCode) {
+    if (editing) {
+      if (pressedKey == ENTER || pressedKey == RETURN) finishEdit();
+      else editor.handleKey(pressedKey);
+      return;
+    }
     char k = Character.toLowerCase(pressedKey);
     if (k == 'g') { showTelemetry = !showTelemetry; if (showTelemetry) showRaster = false; }
     if (k == 'r') { showRaster = !showRaster; if (showRaster) showTelemetry = false; }
@@ -858,6 +870,7 @@ class Simulator {
     if (k == 'c') requestRobotConfig();
     if (k == 'l') chooseRobotCsv();
     if (k == 'i' && !liveRunning) chooseSheetImage();
+    if (k == 'e' && !liveRunning && editor.hasPicture()) editing = true;
     if (k == 'o') {
       overlay = (overlay + 1) % 3;
       String[] what = {"Overlay off: the printed sheet", "Overlay: robot's rebuild on the sheet", "Overlay: twin's rebuild on the sheet"};
@@ -915,7 +928,7 @@ class Simulator {
       configStatus,
       simResult,
       tcpStatus + "   " + liveStatus(),
-      "S scan  X stop  N 10 repeats  P model  I load picture  L load robot scan  O overlay  C robot settings  M mode  R rebuilds  G graphs  T track  +/- zoom  arrows pan",
+      "S scan  X stop  N 10 repeats  P model  I load picture  E edit picture  L load robot scan  O overlay  C robot settings  M mode  R rebuilds  G graphs  T track  +/- zoom  arrows pan",
       savedMessage
     };
     pushStyle();
@@ -1092,8 +1105,24 @@ class Simulator {
       installSheet(surf, ox, oy, null, j.getString("sheet"));
       return;
     }
-    // Any picture: ask its printed size and lay it out like make_sheet.py.
-    float ppm = imagePxPerMm(bytes);
+    // Any picture: rotate and crop it first, then lay it out like make_sheet.py.
+    editor.open(pic, n, base, imagePxPerMm(bytes));
+    editing = true;
+    savedMessage = "Rotate and crop the picture, then press Enter.";
+  }
+
+  void finishEdit() {
+    editing = false;
+    makeSheetFromPicture(editor.result(), editor.fileName, editor.base, editor.pxPerMm);
+  }
+
+  void cancelEdit() {
+    editing = false;
+    savedMessage = "Picture not used (E opens it again).";
+  }
+
+  /** @brief Asks the printed width, lays the picture out, writes the PDF and switches to it. */
+  void makeSheetFromPicture(PImage pic, String n, String base, float ppm) {
     float suggested = (!Float.isNaN(ppm) && ppm > 1.9 && ppm < 200) ? pic.width / ppm : 150;
     float w = askPrintedWidth(n, round(suggested * 10) / 10.0);
     if (Float.isNaN(w)) {

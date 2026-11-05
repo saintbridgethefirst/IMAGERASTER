@@ -21,7 +21,8 @@ same way, so the twin and the real robot can be compared run for run.
 | P | switch the physical model: **Nominal** (template assumptions) or **Calibrated** (your Phase 1 values) |
 | C | copy the scan settings from the robot's dashboard (on the robot's WiFi) |
 | M | sandbox / **live comparison** with the real robot |
-| I | **load your own picture** as the sheet (asks its printed width; also writes a printable PDF) |
+| I | **load your own picture** as the sheet: rotate and crop it, then give its printed width (also writes a printable PDF) |
+| E | rotate/crop that picture again |
 | L | **load a robot scan** (the dashboard's *Download CSV*) into the "Real robot" panel |
 | O | lay the robot's (or the twin's) rebuilt image over the sheet |
 | R / G | image rebuilds panel / telemetry graphs |
@@ -44,8 +45,19 @@ scan settings cover it. The twin reads both when it starts.
 
 ## Use your own picture
 
-**In the twin (easiest):** press **I** and pick a PNG or JPG. Type how wide you want it printed
-(mm). The twin lays it out (start cross, wheel ticks, ruler), switches to it at once, and writes
+**In the twin (easiest):** press **I** and pick a PNG or JPG. A full-window editor opens first:
+
+| In the editor | Does |
+|---|---|
+| drag | draw the crop; drag inside it to move it, drag a corner to resize |
+| `[` / `]` | rotate 1° anticlockwise / clockwise (`{` / `}` = 0.1°) |
+| R | rotate 90° |
+| A | auto-crop: trim the white margins around the drawing |
+| F | no crop (whole picture) |
+| Enter / Esc | use it / cancel |
+
+The rows run left to right across the picture as the editor shows it, so rotate it the way you
+want the robot to scan it. Press Enter, then type how wide you want it printed (mm). The twin lays it out (start cross, wheel ticks, ruler), switches to it at once, and writes
 `sheets/<name>.pdf` to print at 100 % plus the dashboard settings that cover it (Rows, Row length;
 shown in the status line and printed on the sheet). You can also pick a sheet `.json` or
 `_template.png` made by the script below. PDFs can't be loaded: export the page as PNG from Preview
@@ -57,6 +69,8 @@ sheet and the twin's copy together, so they always match:
 ```
 python3 tools/make_sheet.py my_picture.png --width 150          # grey levels kept
 python3 tools/make_sheet.py my_picture.png --width 150 --bw     # pure black and white
+python3 tools/make_sheet.py photo.jpg --rotate -3.5 --autocrop --bw   # straighten, trim margins
+python3 tools/make_sheet.py scan.png --crop 120,80,1900,1300   # keep a pixel box (left,top,right,bottom)
 python3 tools/make_sheet.py --use test_sheet                    # back to the test sheet
 ```
 

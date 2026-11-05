@@ -4,6 +4,8 @@
     python3 tools/make_sheet.py my_picture.png --width 150
     python3 tools/make_sheet.py logo.jpg --width 200 --bw          # black and white
     python3 tools/make_sheet.py drawing.png --height 120 --name bird
+    python3 tools/make_sheet.py photo.jpg --rotate -3.5 --autocrop --bw   # straighten, trim margins
+    python3 tools/make_sheet.py scan.png --crop 120,80,1900,1300            # keep a pixel box
     python3 tools/make_sheet.py --use test_sheet                    # switch the twin back
 
 Writes, in DigitalTwin/sheets/:
@@ -73,6 +75,9 @@ def main():
     ap.add_argument('--bw', action='store_true', help='black and white (threshold) instead of grey')
     ap.add_argument('--threshold', type=int, default=128, help='0-255 threshold for --bw (default 128)')
     ap.add_argument('--invert', action='store_true', help='swap black and white')
+    ap.add_argument('--rotate', type=float, default=0.0, help='rotate the picture, degrees (positive = anticlockwise)')
+    ap.add_argument('--crop', help='keep this box of the (rotated) picture: left,top,right,bottom in pixels')
+    ap.add_argument('--autocrop', action='store_true', help='trim the white margins around the drawing')
     ap.add_argument('--name', help='sheet name (default: the image file name)')
     ap.add_argument('--no-install', action='store_true', help="don't make it the twin's active sheet")
     a = ap.parse_args()
@@ -95,6 +100,18 @@ def main():
         bg = Image.new('RGBA', im.size, (255, 255, 255, 255))
         im = Image.alpha_composite(bg, im)
     im = im.convert('L')
+    if a.rotate:
+        im = im.rotate(a.rotate, resample=Image.BICUBIC, expand=True, fillcolor=255)
+    if a.crop:
+        box = [int(float(v)) for v in a.crop.split(',')]
+        if len(box) != 4 or box[2] <= box[0] or box[3] <= box[1]:
+            ap.error('--crop needs left,top,right,bottom with right > left and bottom > top')
+        im = im.crop(tuple(box))
+    if a.autocrop:
+        bbox = ImageOps.invert(im.point(lambda v: 255 if v >= 215 else 0)).getbbox()
+        if bbox:
+            m = round(0.02 * max(im.size))
+            im = im.crop((max(0, bbox[0] - m), max(0, bbox[1] - m), min(im.width, bbox[2] + m), min(im.height, bbox[3] + m)))
     if a.invert:
         im = ImageOps.invert(im)
     aspect = im.height / im.width
