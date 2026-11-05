@@ -21,7 +21,9 @@ final int WINDOW_WIDTH = 1200;
 /** @brief Initial application-window height in screen pixels. */
 final int WINDOW_HEIGHT = 800;
 /**
- * @brief World position (mm) of the CENTRE of surface.png. The robot's axle
+ * @brief World position (mm) of the CENTRE of surface.png, used only when
+ * there is no surface.json (tools/make_sheet.py writes one for every sheet,
+ * with this position and the scan settings). The robot's axle
  * starts every scan at (0, 0) facing +x. For test_sheet_A3 (420 x 297 mm),
  * whose start cross is 125 mm from the left edge and 90 mm from the bottom,
  * the centre is at (210 - 125, 148.5 - 90) = (85, 58.5).

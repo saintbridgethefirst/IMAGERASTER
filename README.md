@@ -146,6 +146,8 @@ Things to know for big scans:
 (`Controller.pde` mirrors `Controller.cpp`), a printable A3 test sheet that matches the sim surface,
 a physical model to update with your Phase 1 results (`ModelParameters.pde`), and a live comparison
 mode that runs the twin alongside the real robot and compares the two rebuilt images.
+`tools/make_sheet.py` turns any picture into a matching print sheet + twin surface, and tells
+you the dashboard settings (Rows, Row length) that cover it.
 See [DigitalTwin/README.md](DigitalTwin/README.md).
 
 The firmware's telemetry *signal* column (column 14) is 1 only while a scan runs, so the twin can

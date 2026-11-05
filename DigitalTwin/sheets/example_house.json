@@ -1,0 +1,17 @@
+{
+  "sheet": "example_house",
+  "page": "A4 landscape",
+  "offset_x_mm": 81.0,
+  "offset_y_mm": 36.5,
+  "picture_mm": [
+    160.0,
+    106.7
+  ],
+  "settings": {
+    "pattern": 0,
+    "rows": 15,
+    "row_len": 168,
+    "pitch": 7.0,
+    "side": 1
+  }
+}

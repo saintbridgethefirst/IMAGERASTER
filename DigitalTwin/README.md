@@ -36,10 +36,33 @@ with *Next row is on: the left* (rows go up the page). With the default settings
 - bars **across** the rows, 1–6 mm (along-row resolution: sensor spot, delay, speed);
 - bars **along** the rows, 2–6 mm (across-row resolution: row pitch, pose error).
 
-`surface.png` is the same sheet at 1 pixel per mm. To use your own sheet, export it from Inkscape as
-PNG at **25.4 dpi** (= 1 px/mm), save it as `surface.png`, and set `SURFACE_OFFSET_X_MM/Y_MM` in
-`DigitalTwin.pde` to the sheet centre measured from the start position (the formula is in the comment).
-`tools/make_test_sheet.py` regenerates the test sheet.
+`surface.png` is the same sheet at 1 pixel per mm, and `surface.json` says where it sits and which
+scan settings cover it. The twin reads both when it starts.
+
+## Use your own picture
+
+Any picture works (a drawing, a logo, a photo). One command makes the printed sheet and the twin's
+copy together, so they always match:
+
+```
+python3 tools/make_sheet.py my_picture.png --width 150          # grey levels kept
+python3 tools/make_sheet.py my_picture.png --width 150 --bw     # pure black and white
+python3 tools/make_sheet.py --use test_sheet                    # back to the test sheet
+```
+
+It writes `DigitalTwin/sheets/<name>.pdf` (print it at 100 %, "Actual size"), picks A4 or A3 for
+you, and makes the picture the twin's sheet (restart the sketch). It also prints the **dashboard
+settings** that cover the picture (Rows and Row length; they are printed on the sheet too):
+type them into the dashboard's Scan settings and press *Send to robot*. The twin uses them
+automatically. `sheets/example_house.pdf` is an example on A4.
+
+Tips: high-contrast pictures scan best (`--bw`); details smaller than about 3 mm blur away (the
+sensor spot); keep the picture under about 170 × 105 mm for A4, or up to about 290 × 190 mm on A3.
+The robot itself needs about 10 cm of flat table beyond both ends of the rows.
+
+`tools/make_test_sheet.py` regenerates the test sheet. You can also export any sheet from Inkscape
+as PNG at **25.4 dpi** (= 1 px/mm) and set `SURFACE_OFFSET_X_MM/Y_MM` in `DigitalTwin.pde` by hand,
+but then delete `surface.json` so it doesn't override them.
 
 ## Live comparison with the real robot
 

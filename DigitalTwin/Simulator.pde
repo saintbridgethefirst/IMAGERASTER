@@ -108,14 +108,27 @@ class Simulator {
 
   Simulator(PApplet appletIn, float surfaceOffsetXIn, float surfaceOffsetYIn) {
     applet = appletIn;
-    surfaceOffsetX = surfaceOffsetXIn;
-    surfaceOffsetY = surfaceOffsetYIn;
+    // surface.json (written by tools/make_sheet.py) says where the sheet sits
+    // and which scan settings cover it. Without it, use DigitalTwin.pde's values.
+    JSONObject sheet = loadSheetInfo();
+    surfaceOffsetX = (sheet != null && sheet.hasKey("offset_x_mm")) ? sheet.getFloat("offset_x_mm") : surfaceOffsetXIn;
+    surfaceOffsetY = (sheet != null && sheet.hasKey("offset_y_mm")) ? sheet.getFloat("offset_y_mm") : surfaceOffsetYIn;
     ellipseMode(RADIUS);
     strokeJoin(ROUND);
     surfaceImage = loadSurfaceImage();
     surfaceImage.loadPixels();
     robot = new Robot_c(activeModel, surfaceImage, surfaceOffsetX, surfaceOffsetY);
     controller = new Controller_c();
+    if (sheet != null && sheet.hasKey("settings") && controller.applyRobotConfig(sheet.getJSONObject("settings"))) {
+      configStatus = "Sheet \"" + sheet.getString("sheet", "surface.png") + "\": " + controller.config.describe()
+        + " (C copies the robot's)";
+    }
+    // Start with the scan area in view.
+    viewCentreX = controller.config.row_length_mm / 2.0 + 40;
+    viewCentreY = controller.config.side * (controller.config.rows - 1) * controller.config.row_pitch_mm / 2.0;
+    float spanX = controller.config.row_length_mm + 220;
+    float spanY = (controller.config.rows - 1) * controller.config.row_pitch_mm + 200;
+    zoom = constrain(min((width - telemetryPanelWidth()) / spanX, height / spanY), minimumZoom, maximumZoom);
     lastSimulationUpdateMs = millis();
 
     motorGraph = new TimeSeriesGraph("Motor PWM", graphWindowMs, true);
@@ -791,6 +804,19 @@ class Simulator {
 
   String timestamp() {
     return nf(year(), 4) + nf(month(), 2) + nf(day(), 2) + "-" + nf(hour(), 2) + nf(minute(), 2) + nf(second(), 2);
+  }
+
+  /** @return surface.json from the sketch folder, or null if there is none. */
+  JSONObject loadSheetInfo() {
+    File f = new File(sketchPath("surface.json"));
+    if (!f.exists()) return null;
+    try {
+      return loadJSONObject(f.getAbsolutePath());
+    }
+    catch (Exception e) {
+      println("surface.json could not be read: " + e.getMessage());
+      return null;
+    }
   }
 
   /**

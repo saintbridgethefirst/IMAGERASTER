@@ -15,7 +15,9 @@ while scanning a row.
 Needs rsvg-convert (librsvg). Run from the repository root:
     python3 tools/make_test_sheet.py
 """
+import json
 import os
+import shutil
 import subprocess
 
 PAGE_W, PAGE_H = 420.0, 297.0          # A3 landscape, mm
@@ -151,7 +153,18 @@ def main():
     # 25.4 dpi = 1 pixel per mm, exactly the Digital Twin's scale.
     subprocess.run(['rsvg-convert', '-f', 'png', '-d', '25.4', '-p', '25.4',
                     '-b', 'white', '-o', png, svg], check=True)
-    print('wrote', svg, pdf, png)
+    # Where the sheet sits and the settings that cover it (read by the twin).
+    info = {'sheet': 'test_sheet', 'page': 'A3 landscape',
+            'offset_x_mm': WORLD_LEFT + PAGE_W / 2, 'offset_y_mm': WORLD_BOTTOM + PAGE_H / 2,
+            'settings': {'pattern': 0, 'rows': 17, 'row_len': 160, 'pitch': 7.0, 'side': 1}}
+    with open(os.path.join(OUT, 'surface.json'), 'w') as f:
+        json.dump(info, f, indent=2)
+    # Keep a copy with the other sheets, so make_sheet.py --use test_sheet switches back.
+    sheets = os.path.join(OUT, 'sheets')
+    os.makedirs(sheets, exist_ok=True)
+    shutil.copyfile(png, os.path.join(sheets, 'test_sheet_surface.png'))
+    shutil.copyfile(os.path.join(OUT, 'surface.json'), os.path.join(sheets, 'test_sheet.json'))
+    print('wrote', svg, pdf, png, 'and surface.json')
 
 
 if __name__ == '__main__':

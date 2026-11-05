@@ -1,0 +1,13 @@
+{
+  "sheet": "test_sheet",
+  "page": "A3 landscape",
+  "offset_x_mm": 85.0,
+  "offset_y_mm": 58.5,
+  "settings": {
+    "pattern": 0,
+    "rows": 17,
+    "row_len": 160,
+    "pitch": 7.0,
+    "side": 1
+  }
+}
