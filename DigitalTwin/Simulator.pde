@@ -71,6 +71,13 @@ class Simulator {
   String savedMessage = "Results are saved in the sketch's runs/ folder.";
 
   // ---- Robot settings (fetched from the dashboard in a background thread) ---
+  // ---- A saved robot scan, loaded with L (dashboard "Download CSV") ---------
+  volatile File pendingCsv = null;
+  boolean realFromFile = false;
+  /** O cycles what is laid over the sheet: 0 nothing, 1 robot rebuild, 2 twin rebuild. */
+  int overlay = 0;
+  String realSource = "";
+
   volatile JSONObject fetchedConfig = null;
   volatile boolean configFetchInProgress = false;
   volatile String configFetchError = null;
@@ -156,6 +163,11 @@ class Simulator {
   void update() {
     updateTcpConnection();
     applyFetchedConfig();
+    if (pendingCsv != null) {
+      File f = pendingCsv;
+      pendingCsv = null;
+      loadRobotCsv(f);
+    }
     updateRobotModel();
     collectSimSamples();
     checkSimRunEnd();
@@ -301,10 +313,194 @@ class Simulator {
     if (simulatorMode == LIVE_COMPARISON) {
       simDoneForLive = true;
       compareLiveRun();
-    } else if (repeatsRemaining > 0) {
+      return;
+    }
+    if (realFromFile && rasterReal.count() > 0) compareLoadedScan();
+    if (repeatsRemaining > 0) {
       repeatsRemaining--;
       beginSimRun();
     }
+  }
+
+  // ======================================================================
+  // A saved robot scan (L): the dashboard's CSV, or the twin's own *_robot.csv
+  // ======================================================================
+
+  void chooseRobotCsv() {
+    if (simulatorMode != SANDBOX) {
+      savedMessage = "Loading a saved scan works in sandbox mode (press M first).";
+      return;
+    }
+    selectInput("Choose a robot scan CSV (the dashboard's Download CSV)", "robotCsvSelected");
+  }
+
+  /**
+   * @brief Reads a scan CSV, sets the twin's scan settings to match it, and
+   * shows it as the real robot's rebuild. Accepts the dashboard format
+   * (seq,t_ms,x_mm,y_mm,theta_rad,dn1..dn5,state,row) with or without a
+   * header, and the template's 14-column telemetry log.
+   */
+  void loadRobotCsv(File file) {
+    String[] lines = loadStrings(file.getAbsolutePath());
+    if (lines == null) {
+      savedMessage = "Could not read " + file.getName();
+      return;
+    }
+    int it = -1, ix = -1, iy = -1, ith = -1, ist = -1, irow = -1;
+    int[] idn = {-1, -1, -1, -1, -1};
+    boolean first = true;
+    ArrayList<ScanSample_c> loaded = new ArrayList<ScanSample_c>();
+    for (String raw : lines) {
+      String l = trim(raw);
+      if (l.length() == 0 || l.startsWith("#")) continue;
+      String[] f = split(l, ',');
+      if (first) {
+        first = false;
+        if (l.matches(".*[a-df-zA-DF-Z_].*")) {           // a header row
+          for (int k = 0; k < f.length; k++) {
+            String h = trim(f[k]).toLowerCase();
+            if (h.equals("t_ms") || h.equals("timestamp_ms") || h.equals("time_ms") || h.equals("t") || h.equals("ms")) it = k;
+            if (h.equals("x_mm") || h.equals("x")) ix = k;
+            if (h.equals("y_mm") || h.equals("y")) iy = k;
+            if (h.equals("theta_rad") || h.equals("theta") || h.equals("th")) ith = k;
+            for (int d = 0; d < 5; d++) if (h.equals("dn" + (d + 1))) idn[d] = k;
+            if (h.equals("state")) ist = k;
+            if (h.equals("row")) irow = k;
+          }
+          continue;
+        } else if (f.length == 14) {                         // template telemetry
+          it = 0; ix = 1; iy = 2; ith = 3;
+          for (int d = 0; d < 5; d++) idn[d] = 8 + d;
+        } else if (f.length >= 12) {                         // dashboard, no header
+          it = 1; ix = 2; iy = 3; ith = 4; ist = 10; irow = 11;
+          for (int d = 0; d < 5; d++) idn[d] = 5 + d;
+        }
+      }
+      if (it < 0 || ix < 0 || iy < 0 || ith < 0 || idn[4] < 0) {
+        savedMessage = file.getName() + ": needs t_ms, x, y, theta and dn1..dn5 columns.";
+        return;
+      }
+      int need = max(max(max(it, ix), max(iy, ith)), max(idn[4], max(ist, irow)));
+      if (f.length <= need) continue;
+      ScanSample_c s = new ScanSample_c();
+      float t = parseFloat(f[it]);
+      s.x = parseFloat(f[ix]);
+      s.y = parseFloat(f[iy]);
+      s.theta = parseFloat(f[ith]);
+      if (Float.isNaN(t) || Float.isNaN(s.x) || Float.isNaN(s.y) || Float.isNaN(s.theta)) continue;
+      s.t_ms = (long) t;
+      boolean ok = true;
+      for (int d = 0; d < 5; d++) {
+        s.dn[d] = parseFloat(f[idn[d]]);
+        if (Float.isNaN(s.dn[d])) ok = false;
+      }
+      if (!ok) continue;
+      s.state = ist >= 0 ? round(parseFloat(f[ist])) : -1;
+      s.row = irow >= 0 ? round(parseFloat(f[irow])) : 0;
+      s.true_x = Float.NaN;
+      s.true_y = Float.NaN;
+      s.true_theta = Float.NaN;
+      loaded.add(s);
+    }
+    if (loaded.size() < 20) {
+      savedMessage = file.getName() + ": not enough readable rows.";
+      return;
+    }
+
+    // Work out the scan settings from the samples (rows, row length, pitch,
+    // side, path), so the twin can scan exactly the same way.
+    String settingsNote = "Scan settings kept (the file has no state/row columns).";
+    boolean changed = false;
+    if (ist >= 0 && irow >= 0) {
+      RasterConfig_c c = controller.config.copy();
+      int maxRow = 0;
+      float maxX = -1e9;
+      boolean uturn = false;
+      float[] sumY = new float[256];
+      int[] cnt = new int[256];
+      for (ScanSample_c s : loaded) {
+        if (s.state == controller.TURNING_OUT || s.state == controller.SHIFTING
+          || s.state == controller.TURNING_IN || s.state == controller.OVERRUN) uturn = true;
+        if (s.state != controller.SCANNING_ROW || s.row < 0 || s.row > 255) continue;
+        maxRow = max(maxRow, s.row);
+        if (s.row % 2 == 0) maxX = max(maxX, s.x);
+        sumY[s.row] += s.y;
+        cnt[s.row]++;
+      }
+      FloatList gaps = new FloatList();
+      int prevRow = -1;
+      float prevY = 0;
+      for (int r = 0; r <= maxRow; r++) {
+        if (cnt[r] == 0) continue;
+        float m = sumY[r] / cnt[r];
+        if (prevRow >= 0) gaps.append((m - prevY) / (r - prevRow));
+        prevRow = r;
+        prevY = m;
+      }
+      c.rows = maxRow + 1;
+      c.pattern = uturn ? PATTERN_UTURN : PATTERN_BACK_AND_FORTH;
+      if (maxX > 20) c.row_length_mm = round(maxX);
+      if (gaps.size() > 0) {
+        gaps.sort();
+        float pitch = gaps.get(gaps.size() / 2);
+        c.side = pitch < 0 ? -1 : 1;
+        c.row_pitch_mm = max(2, round(abs(pitch) * 2) / 2.0);
+      }
+      changed = !c.describe().equals(controller.config.describe()) || c.side != controller.config.side;
+      if (!controller.isRunning() && controller.setConfig(c)) {
+        settingsNote = "Twin set to the scan's settings: " + controller.config.describe() + ".";
+      } else {
+        settingsNote = "Stop the twin (X) and load again to copy the scan's settings.";
+      }
+    }
+
+    // No state column: label the scan rows like the live comparison does.
+    RasterConfig_c c = controller.config;
+    for (ScanSample_c s : loaded) {
+      if (s.state >= 0) continue;
+      boolean alongRow = abs(sin(s.theta)) < 0.35;
+      s.state = (alongRow && s.x >= 0 && s.x <= c.row_length_mm) ? controller.SCANNING_ROW : controller.MARGIN;
+      s.row = constrain(round(s.y / (c.side * c.row_pitch_mm)), 0, c.rows - 1);
+    }
+
+    realFromFile = true;
+    realSource = file.getName();
+    rasterReal.setArea(controller.config, calibrated);
+    realSamples.clear();
+    realTrail.clear();
+    for (ScanSample_c s : loaded) {
+      realSamples.add(s);
+      realTrail.add(new PVector(s.x, s.y));
+      if (s.state == controller.SCANNING_ROW || s.state == controller.OVERRUN) {
+        rasterReal.addReading(s.x, s.y, s.theta, s.dn, calibrated);
+      }
+    }
+    rasterReal.dirty = true;
+    rasterReal.rebuild(surfaceImage, surfaceOffsetX, surfaceOffsetY, calibrated.offImageReflectance);
+    float durationS = (loaded.get(loaded.size() - 1).t_ms - loaded.get(0).t_ms) / 1000.0;
+    realResult = "Robot (" + realSource + "): coverage " + pct(rasterReal.coverage)
+      + ", error vs sheet " + pct(rasterReal.maeVsTruth);
+    appendSummary(sketchPath("runs/summary.csv"), summaryHeader(),
+      summaryLine("robot", "-", durationS, loaded.size(), rasterReal, -1, -1, -1, 0, realSource));
+    configStatus = settingsNote;
+    simVsReal = -1;
+    if (!changed && !simRunPending && rasterSim.count() > 0) {
+      compareLoadedScan();
+    } else {
+      simResult = "Loaded " + realSource + " (" + loaded.size() + " samples). Press S to scan the twin the same way;"
+        + " the twin vs robot score appears when it finishes.";
+    }
+    println(realResult);
+  }
+
+  /** @brief Twin's last scan vs the loaded robot scan. */
+  void compareLoadedScan() {
+    simVsReal = compareRebuilds(rasterSim, rasterReal);
+    String modelTag = activeModel == nominal ? "nominal" : "calibrated";
+    appendSummary(sketchPath("runs/summary.csv"), summaryHeader(),
+      summaryLine("twin_vs_robot", modelTag, 0, 0, rasterSim, simVsReal, -1, -1, 0, realSource));
+    savedMessage = "Twin vs robot (" + realSource + "): " + pct(simVsReal) + " different. Saved in runs/summary.csv";
+    println(savedMessage);
   }
 
   // ======================================================================
@@ -314,6 +510,8 @@ class Simulator {
   /** @brief Starts the twin together with the real robot. */
   void startLiveRun(TCPTelemetry_c sample) {
     beginSimRun();
+    realFromFile = false;
+    realSource = "live";
     rasterReal.setArea(controller.config, calibrated);
     realSamples.clear();
     realTrail.clear();
@@ -454,6 +652,8 @@ class Simulator {
     translate(-viewCentreX, -viewCentreY);
     imageMode(CENTER);
     drawSurfaceViewportCache();
+    if (overlay == 1 && rasterReal.count() > 0) drawOverlay(rasterReal);
+    if (overlay == 2 && rasterSim.count() > 0) drawOverlay(rasterSim);
     drawScanArea();
     drawTrail(realTrail, color(235, 125, 35, 170));
     drawTrail(simTrail, color(40, 100, 220, 150));
@@ -470,6 +670,19 @@ class Simulator {
   float worldViewCentreX() {
     float panel = (showTelemetry || showRaster) ? telemetryPanelWidth() : 0;
     return (width - panel) / 2.0;
+  }
+
+  /** @brief Lays a rebuilt image over the sheet, at the place it was scanned. */
+  void drawOverlay(RasterImage_c r) {
+    pushStyle();
+    pushMatrix();
+    translate(r.x0, r.y0 + r.h);
+    scale(1, -1);
+    imageMode(CORNER);
+    tint(255, 215);
+    image(r.image, 0, 0, r.w, r.h);
+    popMatrix();
+    popStyle();
   }
 
   void drawScanArea() {
@@ -535,12 +748,12 @@ class Simulator {
     y += textH + margin;
 
     fill(200, 100, 20);
-    text("Real robot (live comparison, M)", panelX + margin, y + textH * 0.8);
+    text(realFromFile ? "Real robot - " + realSource : "Real robot (M live, L load a scan CSV)", panelX + margin, y + textH * 0.8);
     y += textH;
     rasterReal.draw(panelX + margin, y, imgW, imgH);
     y += imgH + 2;
     fill(60);
-    String realLine = rasterReal.count() == 0 ? "No robot scan yet."
+    String realLine = rasterReal.count() == 0 ? "No robot scan yet. Press L to load one."
       : "Coverage " + pct(rasterReal.coverage) + ", error vs sheet " + pct(rasterReal.maeVsTruth);
     if (simVsReal >= 0) realLine += ", twin vs robot " + pct(simVsReal);
     text(realLine, panelX + margin, y + textH * 0.8);
@@ -640,6 +853,12 @@ class Simulator {
       simResult = "Model: " + activeModel.name + ". Press S to scan.";
     }
     if (k == 'c') requestRobotConfig();
+    if (k == 'l') chooseRobotCsv();
+    if (k == 'o') {
+      overlay = (overlay + 1) % 3;
+      String[] what = {"Overlay off: the printed sheet", "Overlay: robot's rebuild on the sheet", "Overlay: twin's rebuild on the sheet"};
+      savedMessage = what[overlay] + " (O to change)";
+    }
     if (pressedKey == '+' || pressedKey == '=') zoom = min(maximumZoom, zoom * 1.2);
     if (pressedKey == '-') zoom = max(minimumZoom, zoom / 1.2);
     if (pressedKey == CODED) {
@@ -692,7 +911,7 @@ class Simulator {
       configStatus,
       simResult,
       tcpStatus + "   " + liveStatus(),
-      "S scan  X stop  N 10 repeats  P model  C robot settings  M mode  R rebuilds  G graphs  T track  +/- zoom  arrows pan",
+      "S scan  X stop  N 10 repeats  P model  L load robot scan  O overlay  C robot settings  M mode  R rebuilds  G graphs  T track  +/- zoom  arrows pan",
       savedMessage
     };
     pushStyle();

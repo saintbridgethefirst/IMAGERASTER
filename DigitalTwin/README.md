@@ -21,6 +21,8 @@ same way, so the twin and the real robot can be compared run for run.
 | P | switch the physical model: **Nominal** (template assumptions) or **Calibrated** (your Phase 1 values) |
 | C | copy the scan settings from the robot's dashboard (on the robot's WiFi) |
 | M | sandbox / **live comparison** with the real robot |
+| L | **load a robot scan** (the dashboard's *Download CSV*) into the "Real robot" panel |
+| O | lay the robot's (or the twin's) rebuilt image over the sheet |
 | R / G | image rebuilds panel / telemetry graphs |
 | T, +/-, arrows | track the robot, zoom, pan |
 
@@ -64,6 +66,22 @@ The robot itself needs about 10 cm of flat table beyond both ends of the rows.
 `tools/make_test_sheet.py` regenerates the test sheet. You can also export any sheet from Inkscape
 as PNG at **25.4 dpi** (= 1 px/mm) and set `SURFACE_OFFSET_X_MM/Y_MM` in `DigitalTwin.pde` by hand,
 but then delete `surface.json` so it doesn't override them.
+
+## Bring a robot scan into the twin
+
+**After the scan (any time):**
+
+1. On the dashboard, after a scan, press **Download CSV** (the page must be opened from the robot).
+2. In the twin press **L** and pick that CSV. It shows in the *Real robot* panel and its path is
+   drawn in orange on the sheet. The twin copies the scan's settings from the file (rows, row length,
+   pitch, path).
+3. Press **S**: the twin scans the same way, and when it finishes the panel shows **twin vs robot**
+   (mean image difference) and writes it to `runs/summary.csv`.
+4. Press **O** to lay the robot's rebuild over the sheet (press again for the twin's), to see where
+   it lands relative to the printed shapes.
+
+The twin also loads its own `runs/*_robot.csv` files and the template's 14-column Serial/TCP log.
+The sheet in the twin must be the one you scanned (see *Use your own picture*).
 
 ## Live comparison with the real robot
 

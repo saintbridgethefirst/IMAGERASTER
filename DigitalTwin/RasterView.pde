@@ -180,16 +180,20 @@ class RasterImage_c {
   }
 }
 
-/** @return Mean |darkness difference| where both rebuilds have data, or -1. */
+/**
+ * @return Mean |darkness difference| over a's scan area where both rebuilds
+ * have data, or -1. The grids are matched by world position, so they may differ.
+ */
 float compareRebuilds(RasterImage_c a, RasterImage_c b) {
-  if (a.w != b.w || a.h != b.h) return -1;
   float sum = 0;
   int n = 0;
   for (int j = 0; j < a.h; j++) {
     for (int i = 0; i < a.w; i++) {
       float wx = a.x0 + i + 0.5, wy = a.y0 + j + 0.5;
       if (wx < a.tx0 || wx > a.tx1 || wy < a.ty0 || wy > a.ty1) continue;
-      float da = a.darknessAt(i, j), db = b.darknessAt(i, j);
+      int bi = floor(wx - b.x0), bj = floor(wy - b.y0);
+      if (bi < 0 || bj < 0 || bi >= b.w || bj >= b.h) continue;
+      float da = a.darknessAt(i, j), db = b.darknessAt(bi, bj);
       if (da < 0 || db < 0) continue;
       sum += abs(da - db);
       n++;

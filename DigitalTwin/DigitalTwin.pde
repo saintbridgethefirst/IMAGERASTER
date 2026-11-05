@@ -11,6 +11,8 @@ import java.net.*;
  * Put your Phase 1 measurements in ModelParameters.pde.
  *
  * Keys: S scan, X stop, N 10 repeats, F fast, P nominal/calibrated model,
+ *       L load a robot scan CSV (the dashboard's Download CSV),
+ *       O lay the robot's or the twin's rebuild over the sheet,
  *       C copy the robot's scan settings, M sandbox/live comparison,
  *       R image rebuilds, G graphs, T track, +/- zoom, arrows pan.
  * Results (CSV, PNG, runs/summary.csv) are written to the runs/ folder.
@@ -52,4 +54,9 @@ void draw() {
 
 void keyPressed() {
   simulator.handleKey(key, keyCode);
+}
+
+/** @brief Called by the L key's file dialog (on another thread). */
+public void robotCsvSelected(File selection) {
+  if (selection != null) simulator.pendingCsv = selection;
 }
