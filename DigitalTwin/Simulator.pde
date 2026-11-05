@@ -28,8 +28,9 @@ class Simulator {
   final float maximumZoom = 6.0;
   final int SANDBOX = 0, LIVE_COMPARISON = 1;
 
-  final float surfaceOffsetX;
-  final float surfaceOffsetY;
+  float surfaceOffsetX;
+  float surfaceOffsetY;
+  String sheetName = "surface.png";
 
   PImage surfaceImage;
   PImage surfaceViewportCache;
@@ -73,6 +74,7 @@ class Simulator {
   // ---- Robot settings (fetched from the dashboard in a background thread) ---
   // ---- A saved robot scan, loaded with L (dashboard "Download CSV") ---------
   volatile File pendingCsv = null;
+  volatile File pendingSheet = null;
   boolean realFromFile = false;
   /** O cycles what is laid over the sheet: 0 nothing, 1 robot rebuild, 2 twin rebuild. */
   int overlay = 0;
@@ -130,12 +132,8 @@ class Simulator {
       configStatus = "Sheet \"" + sheet.getString("sheet", "surface.png") + "\": " + controller.config.describe()
         + " (C copies the robot's)";
     }
-    // Start with the scan area in view.
-    viewCentreX = controller.config.row_length_mm / 2.0 + 40;
-    viewCentreY = controller.config.side * (controller.config.rows - 1) * controller.config.row_pitch_mm / 2.0;
-    float spanX = controller.config.row_length_mm + 220;
-    float spanY = (controller.config.rows - 1) * controller.config.row_pitch_mm + 200;
-    zoom = constrain(min((width - telemetryPanelWidth()) / spanX, height / spanY), minimumZoom, maximumZoom);
+    if (sheet != null) sheetName = sheet.getString("sheet", "surface.png");
+    frameView();
     lastSimulationUpdateMs = millis();
 
     motorGraph = new TimeSeriesGraph("Motor PWM", graphWindowMs, true);
@@ -163,6 +161,11 @@ class Simulator {
   void update() {
     updateTcpConnection();
     applyFetchedConfig();
+    if (pendingSheet != null) {
+      File f = pendingSheet;
+      pendingSheet = null;
+      loadSheetFile(f);
+    }
     if (pendingCsv != null) {
       File f = pendingCsv;
       pendingCsv = null;
@@ -854,6 +857,7 @@ class Simulator {
     }
     if (k == 'c') requestRobotConfig();
     if (k == 'l') chooseRobotCsv();
+    if (k == 'i' && !liveRunning) chooseSheetImage();
     if (k == 'o') {
       overlay = (overlay + 1) % 3;
       String[] what = {"Overlay off: the printed sheet", "Overlay: robot's rebuild on the sheet", "Overlay: twin's rebuild on the sheet"};
@@ -911,7 +915,7 @@ class Simulator {
       configStatus,
       simResult,
       tcpStatus + "   " + liveStatus(),
-      "S scan  X stop  N 10 repeats  P model  L load robot scan  O overlay  C robot settings  M mode  R rebuilds  G graphs  T track  +/- zoom  arrows pan",
+      "S scan  X stop  N 10 repeats  P model  I load picture  L load robot scan  O overlay  C robot settings  M mode  R rebuilds  G graphs  T track  +/- zoom  arrows pan",
       savedMessage
     };
     pushStyle();
@@ -1023,6 +1027,127 @@ class Simulator {
 
   String timestamp() {
     return nf(year(), 4) + nf(month(), 2) + nf(day(), 2) + "-" + nf(hour(), 2) + nf(minute(), 2) + nf(second(), 2);
+  }
+
+  /** @brief Puts the scan area in view. */
+  void frameView() {
+    viewCentreX = controller.config.row_length_mm / 2.0 + 40;
+    viewCentreY = controller.config.side * (controller.config.rows - 1) * controller.config.row_pitch_mm / 2.0;
+    float spanX = controller.config.row_length_mm + 220;
+    float spanY = (controller.config.rows - 1) * controller.config.row_pitch_mm + 200;
+    zoom = constrain(min((width - telemetryPanelWidth()) / spanX, height / spanY), minimumZoom, maximumZoom);
+  }
+
+  // ======================================================================
+  // Your own picture as the sheet (I)
+  // ======================================================================
+
+  void chooseSheetImage() {
+    selectInput("Choose the picture to scan (PNG or JPG), or a make_sheet .json", "sheetImageSelected");
+  }
+
+  /** @brief Loads a picture (or a ready-made sheet) and makes it the twin's sheet. */
+  void loadSheetFile(File f) {
+    String n = f.getName();
+    String lower = n.toLowerCase();
+    String base = n.replaceAll("\\.[^.]*$", "").replaceAll("[^A-Za-z0-9_-]", "_");
+    if (lower.endsWith(".pdf")) {
+      savedMessage = "PDFs can't be loaded: open it in Preview, File > Export, PNG (150 pixels/inch), and load the PNG.";
+      return;
+    }
+    // A sheet made by make_sheet.py: its .json next to its _surface.png.
+    if (lower.endsWith(".json")) {
+      JSONObject j = loadJSONObject(f.getAbsolutePath());
+      File png = new File(f.getParentFile(), base + "_surface.png");
+      PImage img = png.exists() ? loadImage(png.getAbsolutePath()) : null;
+      if (j == null || img == null || !j.hasKey("offset_x_mm")) {
+        savedMessage = n + ": expected a make_sheet.py .json with its _surface.png beside it.";
+        return;
+      }
+      img.save(sketchPath("surface.png"));
+      saveJSONObject(j, sketchPath("surface.json"));
+      installSheet(img, j.getFloat("offset_x_mm"), j.getFloat("offset_y_mm"),
+        j.hasKey("settings") ? j.getJSONObject("settings") : null, j.getString("sheet", base));
+      return;
+    }
+    byte[] bytes = loadBytes(f.getAbsolutePath());
+    PImage pic = loadImage(f.getAbsolutePath());
+    if (pic == null || pic.width <= 0) {
+      savedMessage = n + " could not be opened as a picture (PNG, JPG, GIF or TGA).";
+      return;
+    }
+    // A *_template.png from make_sheet.py: a whole sheet with its placement inside.
+    JSONObject place = pngTextJson(bytes, "rasterbot-template");
+    if (place != null && place.hasKey("w_mm")) {
+      float w = place.getFloat("w_mm"), h = place.getFloat("h_mm");
+      PImage surf = createImage(round(w), round(h), RGB);
+      surf.copy(pic, 0, 0, pic.width, pic.height, 0, 0, surf.width, surf.height);
+      float ox = place.getFloat("x0_mm") + w / 2, oy = place.getFloat("y0_mm") + h / 2;
+      JSONObject j = new JSONObject();
+      j.setString("sheet", place.getString("sheet", base));
+      j.setFloat("offset_x_mm", ox);
+      j.setFloat("offset_y_mm", oy);
+      surf.save(sketchPath("surface.png"));
+      saveJSONObject(j, sketchPath("surface.json"));
+      installSheet(surf, ox, oy, null, j.getString("sheet"));
+      return;
+    }
+    // Any picture: ask its printed size and lay it out like make_sheet.py.
+    float ppm = imagePxPerMm(bytes);
+    float suggested = (!Float.isNaN(ppm) && ppm > 1.9 && ppm < 200) ? pic.width / ppm : 150;
+    float w = askPrintedWidth(n, round(suggested * 10) / 10.0);
+    if (Float.isNaN(w)) {
+      savedMessage = "Cancelled (the width must be 10 to 400 mm).";
+      return;
+    }
+    float h = w * pic.height / (float) pic.width;
+    SheetLayout_c L = layoutSheet(base, w, h, controller.config.row_pitch_mm);
+    if (L == null) {
+      savedMessage = n + " at " + nf(w, 0, 0) + " x " + nf(h, 0, 0) + " mm doesn't fit on A3 with the robot's start: try it smaller.";
+      return;
+    }
+    PImage surf = renderSheetSurface(pic, L);
+    JSONObject j = L.toJson();
+    surf.save(sketchPath("sheets/" + base + "_surface.png"));
+    saveJSONObject(j, sketchPath("sheets/" + base + ".json"));
+    String pdfNote;
+    try {
+      writeSheetPdf(pic, L, sketchPath("sheets/" + base + ".pdf"));
+      pdfNote = "Print sheets/" + base + ".pdf at 100% on " + L.pageName.split(" ")[0] + ". ";
+    }
+    catch (Exception e) {
+      pdfNote = "(The PDF could not be written: " + e.getMessage() + ") ";
+    }
+    surf.save(sketchPath("surface.png"));
+    saveJSONObject(j, sketchPath("surface.json"));
+    installSheet(surf, j.getFloat("offset_x_mm"), j.getFloat("offset_y_mm"), j.getJSONObject("settings"), base);
+    savedMessage = pdfNote + "Dashboard: Rows " + L.rows + ", Row length " + round(L.rowLen)
+      + " mm, Row pitch " + nf(L.pitch, 0, 1) + " mm.";
+    println(savedMessage);
+  }
+
+  /** @brief Switches the twin to a new sheet and starts a fresh scan of it. */
+  void installSheet(PImage img, float offX, float offY, JSONObject settings, String name) {
+    controller.reset();
+    simRunPending = false;
+    repeatsRemaining = 0;
+    img.loadPixels();
+    surfaceImage = img;
+    surfaceOffsetX = offX;
+    surfaceOffsetY = offY;
+    robot.setSurface(img, offX, offY);
+    surfaceViewportCache = null;
+    surfaceCacheX = -1;
+    sheetName = name;
+    if (settings != null) controller.applyRobotConfig(settings);
+    configStatus = "Sheet \"" + name + "\": " + controller.config.describe() + " (C copies the robot's)";
+    rasterReal.setArea(controller.config, calibrated);
+    realSamples.clear();
+    realTrail.clear();
+    realFromFile = false;
+    simVsReal = -1;
+    frameView();
+    if (simulatorMode == SANDBOX) beginSimRun();
   }
 
   /** @return surface.json from the sketch folder, or null if there is none. */

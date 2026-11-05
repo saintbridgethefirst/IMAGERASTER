@@ -16,8 +16,8 @@ class Robot_c {
   ModelParameters_c model;
   long simulationMillis = 0;
   PImage surfaceImage;
-  final float surfaceOffsetX;
-  final float surfaceOffsetY;
+  float surfaceOffsetX;
+  float surfaceOffsetY;
   RobotSurface_c surface = new RobotSurface_c();
   MotorsModel_c motors = new MotorsModel_c();
   /** @brief TRUE pose and encoder counts (the physics). */
@@ -42,6 +42,13 @@ class Robot_c {
     for (int i = 0; i < 5; i++) sensors[i] = new SurfaceSensorModel_c("DN" + (i + 1), i);
     setModel(modelIn);
     resetForRun(0, 0, 0, 0, 0);
+  }
+
+  /** @brief Puts a different sheet under the robot (1 px/mm, centred at the offset). */
+  void setSurface(PImage surfaceIn, float offsetX, float offsetY) {
+    surfaceImage = surfaceIn;
+    surfaceOffsetX = offsetX;
+    surfaceOffsetY = offsetY;
   }
 
   /** @brief Switches the physical parameters (for example nominal/calibrated). */

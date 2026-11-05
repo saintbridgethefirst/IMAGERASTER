@@ -21,6 +21,7 @@ same way, so the twin and the real robot can be compared run for run.
 | P | switch the physical model: **Nominal** (template assumptions) or **Calibrated** (your Phase 1 values) |
 | C | copy the scan settings from the robot's dashboard (on the robot's WiFi) |
 | M | sandbox / **live comparison** with the real robot |
+| I | **load your own picture** as the sheet (asks its printed width; also writes a printable PDF) |
 | L | **load a robot scan** (the dashboard's *Download CSV*) into the "Real robot" panel |
 | O | lay the robot's (or the twin's) rebuilt image over the sheet |
 | R / G | image rebuilds panel / telemetry graphs |
@@ -43,8 +44,15 @@ scan settings cover it. The twin reads both when it starts.
 
 ## Use your own picture
 
-Any picture works (a drawing, a logo, a photo). One command makes the printed sheet and the twin's
-copy together, so they always match:
+**In the twin (easiest):** press **I** and pick a PNG or JPG. Type how wide you want it printed
+(mm). The twin lays it out (start cross, wheel ticks, ruler), switches to it at once, and writes
+`sheets/<name>.pdf` to print at 100 % plus the dashboard settings that cover it (Rows, Row length;
+shown in the status line and printed on the sheet). You can also pick a sheet `.json` or
+`_template.png` made by the script below. PDFs can't be loaded: export the page as PNG from Preview
+first. The new sheet is saved as `surface.png`, so it is still there next time.
+
+**With the script:** any picture works (a drawing, a logo, a photo). One command makes the printed
+sheet and the twin's copy together, so they always match:
 
 ```
 python3 tools/make_sheet.py my_picture.png --width 150          # grey levels kept

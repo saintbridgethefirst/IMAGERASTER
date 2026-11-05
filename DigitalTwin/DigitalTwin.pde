@@ -1,4 +1,5 @@
 import processing.net.*;
+import processing.pdf.*;
 import processing.core.PApplet;
 import java.net.*;
 
@@ -11,6 +12,7 @@ import java.net.*;
  * Put your Phase 1 measurements in ModelParameters.pde.
  *
  * Keys: S scan, X stop, N 10 repeats, F fast, P nominal/calibrated model,
+ *       I load your own picture as the sheet (also writes a printable PDF),
  *       L load a robot scan CSV (the dashboard's Download CSV),
  *       O lay the robot's or the twin's rebuild over the sheet,
  *       C copy the robot's scan settings, M sandbox/live comparison,
