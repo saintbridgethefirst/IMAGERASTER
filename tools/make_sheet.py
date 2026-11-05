@@ -10,6 +10,8 @@ Writes, in DigitalTwin/sheets/:
     <name>.pdf          print this at 100 % ("Actual size"); the page size is chosen for you
     <name>.svg          vector source (open in Inkscape)
     <name>_surface.png  the same sheet at 1 pixel per mm (what the twin scans)
+    <name>_template.png the same sheet at 4 px/mm with its placement built in: load it in the
+                        dashboard's "Compare with your template" to compare it with a robot scan
     <name>.json         where the sheet sits in the world, and the scan settings for it
 and makes it the twin's active sheet (DigitalTwin/surface.png + surface.json),
 unless you pass --no-install.
@@ -32,6 +34,7 @@ import shutil
 import subprocess
 
 from PIL import Image, ImageOps
+from PIL.PngImagePlugin import PngInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TWIN = os.path.normpath(os.path.join(HERE, '..', 'DigitalTwin'))
@@ -41,6 +44,17 @@ IMG_X0 = 45.0          # picture's left edge (world x, mm)
 BAND = 9.0             # DN2/DN4 are 9 mm either side of DN3
 PAGES = [('A4 landscape', 297, 210), ('A4 portrait', 210, 297),
          ('A3 landscape', 420, 297), ('A3 portrait', 297, 420)]
+
+
+def write_template_png(svg_path, png_path, place):
+    """The sheet at 4 px/mm, with its position in the robot's frame stored in the PNG
+    (tEXt 'rasterbot-template'), so the dashboard can line it up with a scan."""
+    subprocess.run(['rsvg-convert', '-f', 'png', '-d', '101.6', '-p', '101.6', '-b', 'white',
+                    '-o', png_path, svg_path], check=True)
+    im = Image.open(png_path).convert('L')
+    meta = PngInfo()
+    meta.add_text('rasterbot-template', json.dumps(place))
+    im.save(png_path, pnginfo=meta, dpi=(101.6, 101.6), optimize=True)
 
 
 def settings_for(w_mm, h_mm, pitch):
@@ -185,6 +199,8 @@ def main():
     }
     with open(json_path, 'w') as f:
         json.dump(info, f, indent=2)
+    write_template_png(svg_path, os.path.join(out, name + '_template.png'),
+                       {'sheet': name, 'x0_mm': round(left, 3), 'y0_mm': round(bottom, 3), 'w_mm': PW, 'h_mm': PH})
     if not a.no_install:
         shutil.copyfile(png_path, os.path.join(TWIN, 'surface.png'))
         shutil.copyfile(json_path, os.path.join(TWIN, 'surface.json'))

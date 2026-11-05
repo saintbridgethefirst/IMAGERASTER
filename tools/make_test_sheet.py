@@ -164,6 +164,12 @@ def main():
     os.makedirs(sheets, exist_ok=True)
     shutil.copyfile(png, os.path.join(sheets, 'test_sheet_surface.png'))
     shutil.copyfile(os.path.join(OUT, 'surface.json'), os.path.join(sheets, 'test_sheet.json'))
+    # For the dashboard's "Compare with your template".
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from make_sheet import write_template_png
+    write_template_png(svg, os.path.join(sheets, 'test_sheet_template.png'),
+                       {'sheet': 'test_sheet', 'x0_mm': WORLD_LEFT, 'y0_mm': WORLD_BOTTOM, 'w_mm': PAGE_W, 'h_mm': PAGE_H})
     print('wrote', svg, pdf, png, 'and surface.json')
 
 

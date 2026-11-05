@@ -54,7 +54,8 @@ It writes `DigitalTwin/sheets/<name>.pdf` (print it at 100 %, "Actual size"), pi
 you, and makes the picture the twin's sheet (restart the sketch). It also prints the **dashboard
 settings** that cover the picture (Rows and Row length; they are printed on the sheet too):
 type them into the dashboard's Scan settings and press *Send to robot*. The twin uses them
-automatically. `sheets/example_house.pdf` is an example on A4.
+automatically. `sheets/example_house.pdf` is an example on A4. Each sheet also gets a `<name>_template.png`: load it in the dashboard's
+*Compare with your template* panel to compare a real scan with it.
 
 Tips: high-contrast pictures scan best (`--bw`); details smaller than about 3 mm blur away (the
 sensor spot); keep the picture under about 170 × 105 mm for A4, or up to about 290 × 190 mm on A3.

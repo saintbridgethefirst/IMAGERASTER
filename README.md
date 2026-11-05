@@ -156,6 +156,28 @@ start and end with each robot scan.
 The template code (StampC3 and Digital Twin) is from the unit's repository, which is licensed under
 GPL-3.0; files derived from it carry that licence when shared.
 
+## Compare the scan with your template
+
+The dashboard's **Compare with your template** panel shows your printed picture, the robot's scan
+and a difference map side by side, with an error score (mean darkness difference, the same measure
+the Digital Twin uses) and a correlation.
+
+1. **Load template…** and pick the picture you printed (PNG, JPG or SVG).
+   - Sheets from `tools/make_sheet.py`: load `DigitalTwin/sheets/<name>_template.png`. It knows
+     where it was printed relative to the start cross, so it lines up by itself.
+   - Any other picture: the panel reads the printed size from the file if it can, otherwise type the
+     **printed width** in mm.
+   - A PDF: open it in Preview, *File > Export*, PNG, 150 pixels/inch, and load the PNG (the robot's
+     WiFi has no internet, so the page can't open PDFs itself).
+2. Press **Auto-align**. It finds where the picture sits under the scan and, with *Fit scale too*,
+   how much the scan is stretched. If the printed size is known, a scale away from 1.000 along the
+   rows points at the wheel radius, and the panel suggests a corrected value.
+3. Red in the difference map is ink the scan shows but the template doesn't; blue is ink the scan
+   missed. *Blur template like the sensor* compares against what an ideal sensor would see, which
+   separates position errors from the sensor's own blur.
+
+The template is remembered by this browser.
+
 ## Getting a crisp image (no re-scan needed)
 
 1. After a scan, press **Auto-calibrate from this scan**.

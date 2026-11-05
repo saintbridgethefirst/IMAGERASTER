@@ -38,6 +38,8 @@ const char DASHBOARD_HTML[] PROGMEM = R"DASHBOARD(<!doctype html>
   --s3: #1baf7a;
   --s4: #eda100;
   --s5: #e87ba4;
+  --diff-more: #d4380d;
+  --diff-less: #1f6fd1;
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-data: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
@@ -65,6 +67,8 @@ const char DASHBOARD_HTML[] PROGMEM = R"DASHBOARD(<!doctype html>
     --s3: #199e70;
     --s4: #c98500;
     --s5: #d55181;
+    --diff-more: #ff7a45;
+    --diff-less: #4f9bff;
     color-scheme: dark;
   }
 }
@@ -91,6 +95,8 @@ const char DASHBOARD_HTML[] PROGMEM = R"DASHBOARD(<!doctype html>
   --s3: #199e70;
   --s4: #c98500;
   --s5: #d55181;
+  --diff-more: #ff7a45;
+  --diff-less: #4f9bff;
   color-scheme: dark;
 }
 
@@ -253,6 +259,19 @@ label.file span {
   font: 600 13px/1 var(--font-ui); padding: 10px 14px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
 }
+/* ---------- template comparison ---------- */
+.tpl-fields { margin-top: 12px; }
+.tpl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.tpl-grid figure { margin: 0; min-width: 0; display: grid; gap: 6px; }
+.tpl-grid figcaption { font: 600 12px/1.3 var(--font-data); color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.tpl-grid canvas { display: block; width: 100%; border-radius: 6px; background: var(--empty-a); }
+.tpl-key { font-weight: 400; color: var(--ink-3); display: inline-flex; align-items: center; gap: 4px 6px; flex-wrap: wrap; }
+.tpl-key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.tpl-key i.more { background: var(--diff-more); }
+.tpl-key i.less { background: var(--diff-less); margin-left: 6px; }
+.tpl-msg { font-size: 12px; margin: 0; padding: 0 14px 14px; }
+.tpl-msg code { font-family: var(--font-data); color: var(--ink-2); }
+@media (max-width: 640px) { .tpl-grid, .tpl-fields { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .bar .fill { transition: none; } }
 @media (max-width: 940px) {
   /* One column: image first, then run controls, then the rest. */
@@ -260,6 +279,7 @@ label.file span {
   .main, .rail { display: contents; }
   #sec-img { order: 1; }
   #sec-run { order: 2; }
+  #sec-tpl { order: 3; }
   #sec-chart { order: 3; }
   .rail > section { order: 4; }
   .rail > #sec-run { order: 2; }
@@ -306,6 +326,40 @@ label.file span {
           <span>Row gaps <b id="ro-rows">–</b></span>
           <span id="ro-hover">Hover the image for a reading</span>
         </div>
+      </section>
+
+      <!-- Template comparison -->
+      <section class="panel" id="sec-tpl" aria-labelledby="tpl-title">
+        <div class="panel-head">
+          <h2 id="tpl-title">Compare with your template</h2>
+          <span class="label" id="tpl-name">No template</span>
+        </div>
+        <div class="panel-body">
+          <div class="data-row">
+            <label class="file"><input type="file" id="tpl-in" accept=".png,.jpg,.jpeg,.svg,.webp,.pdf,image/png,image/jpeg,image/svg+xml,image/webp,application/pdf"><span>Load template…</span></label>
+            <button type="button" class="btn primary" id="tpl-align" disabled>Auto-align</button>
+            <label class="check"><input type="checkbox" id="tpl-scale" checked> Fit scale too</label>
+            <label class="check"><input type="checkbox" id="tpl-blur"> Blur template like the sensor</label>
+            <button type="button" class="btn" id="tpl-clear" disabled>Remove</button>
+          </div>
+          <div class="fields three tpl-fields">
+            <div class="field"><label for="tpl-w">Printed picture width (mm)</label><input id="tpl-w" type="number" min="5" max="2000" step="0.5" disabled></div>
+            <div class="field"><label for="tpl-x">Left edge at x (mm)</label><input id="tpl-x" type="number" step="0.5" disabled></div>
+            <div class="field"><label for="tpl-y">Bottom edge at y (mm)</label><input id="tpl-y" type="number" step="0.5" disabled></div>
+          </div>
+          <div class="tpl-grid">
+            <figure><figcaption>Template</figcaption><canvas id="tpl-c-ref" aria-label="Your template over the scanned area"></canvas></figure>
+            <figure><figcaption>Robot scan</figcaption><canvas id="tpl-c-scan" aria-label="The robot's rebuilt image"></canvas></figure>
+            <figure><figcaption>Difference <span class="tpl-key"><i class="more"></i>extra ink <i class="less"></i>missed ink</span></figcaption><canvas id="tpl-c-diff" aria-label="Where the scan and the template differ"></canvas></figure>
+          </div>
+        </div>
+        <div class="readout">
+          <span>Error vs template <b id="tpl-err">–</b></span>
+          <span>Match (correlation) <b id="tpl-corr">–</b></span>
+          <span>Compared <b id="tpl-area">–</b></span>
+          <span>Scale x / y <b id="tpl-sc">–</b></span>
+        </div>
+        <p class="muted tpl-msg" id="tpl-msg">Load the picture you printed (PNG, JPG or SVG) to see it next to the robot's scan. Sheets from <code>tools/make_sheet.py</code>: load <code>&lt;name&gt;_template.png</code> and it lines up by itself.</p>
       </section>
 
       <!-- Sensor traces -->
@@ -1241,7 +1295,7 @@ label.file span {
     const wait = force ? 0 : Math.max(0, 200 - (performance.now() - lastRender));
     setTimeout(() => requestAnimationFrame(() => {
       renderQueued = false; lastRender = performance.now();
-      drawImage(); drawChart(); renderRunPanel();
+      drawImage(); drawTemplate(); drawChart(); renderRunPanel();
     }), wait);
   }
   function setView(v) {
@@ -1653,6 +1707,386 @@ label.file span {
     }, 30);
   });
 
+  // ------------------------------------------------------ template compare
+  // Your printed picture next to the robot's scan. The template is placed in
+  // the robot's frame (axle start = origin, rows along +x, next rows +y):
+  // its bottom-left corner at (x0, y0) mm, printed width w mm, then stretched
+  // by (sx, sy) when Auto-align fits the scale. Sheets made by make_sheet.py
+  // carry their placement inside the PNG, so they line up without searching.
+  const TPL_KEY = 'rasterbot-template-v1';
+  const TPL_R = 2;                       // template samples per mm
+  let tpl = null;
+  let tplStats = null;
+
+  function pngInfo(buf) {
+    // Reads pHYs (pixel size) and tEXt 'rasterbot-template' (placement) chunks.
+    const b = new Uint8Array(buf), dv = new DataView(buf);
+    const out = {};
+    if (b.length < 8 || b[0] !== 0x89 || b[1] !== 0x50) return out;
+    let p = 8;
+    while (p + 8 <= b.length) {
+      const len = dv.getUint32(p), type = String.fromCharCode(b[p + 4], b[p + 5], b[p + 6], b[p + 7]);
+      const d = p + 8;
+      if (type === 'pHYs' && len >= 9 && b[d + 8] === 1) out.pxPerMm = dv.getUint32(d) / 1000;
+      if (type === 'tEXt') {
+        const txt = new TextDecoder('latin1').decode(b.subarray(d, d + len));
+        const z = txt.indexOf('\0');
+        if (z > 0 && txt.slice(0, z) === 'rasterbot-template') { try { out.place = JSON.parse(txt.slice(z + 1)); } catch (e) { /* ignore */ } }
+      }
+      if (type === 'IEND') break;
+      p = d + len + 4;
+    }
+    return out;
+  }
+  function jpegInfo(buf) {
+    const b = new Uint8Array(buf);
+    // JFIF APP0: FF D8 FF E0 .. 'JFIF\0' ver(2) units(1) Xdensity(2)
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff && b[3] === 0xe0 && b[6] === 0x4a && b[7] === 0x46) {
+      const units = b[13], xd = (b[14] << 8) | b[15];
+      if (units === 1 && xd > 0) return { pxPerMm: xd / 25.4 };
+      if (units === 2 && xd > 0) return { pxPerMm: xd / 10 };
+    }
+    return {};
+  }
+
+  function defaultTplPlace(wmm) {
+    // make_sheet.py convention: picture's bottom-left 45 mm ahead of the start
+    // axle, on the first row line.
+    return { x0: 45, y0: 0, w: wmm };
+  }
+
+  async function loadTemplateFile(file) {
+    const msg = $('tpl-msg');
+    const name = file.name || 'template';
+    if (/\.pdf$/i.test(name) || file.type === 'application/pdf') {
+      setMsg(msg, 'PDFs can\'t be opened here (the robot\'s WiFi has no internet for a PDF reader). For a make_sheet.py sheet, load <name>_template.png from the same folder. For any other PDF: open it in Preview, File > Export, Format PNG, 150 pixels/inch, and load that PNG.', true);
+      return;
+    }
+    const buf = await file.arrayBuffer();
+    let info = {};
+    if (/\.png$/i.test(name) || file.type === 'image/png') info = pngInfo(buf);
+    else if (/\.jpe?g$/i.test(name) || file.type === 'image/jpeg') info = jpegInfo(buf);
+    const url = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result); fr.onerror = rej;
+      fr.readAsDataURL(file);
+    });
+    const isSvg = /\.svg$/i.test(name) || file.type === 'image/svg+xml';
+    await setTemplate({ name, url, info, isSvg });
+  }
+
+  function imageFromUrl(url) {
+    return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+  }
+
+  async function setTemplate(src, saved) {
+    const msg = $('tpl-msg');
+    let im;
+    try { im = await imageFromUrl(src.url); } catch (e) { setMsg(msg, 'That file could not be opened as a picture.', true); return; }
+    const nw = im.naturalWidth || im.width, nh = im.naturalHeight || im.height;
+    if (!nw || !nh) { setMsg(msg, 'That picture has no size (an SVG needs a width and height).', true); return; }
+    let place, how;
+    if (saved) { place = saved; how = saved.how || 'Restored from this browser.'; }
+    else if (src.info.place && src.info.place.w_mm) {
+      const p = src.info.place;
+      place = { x0: p.x0_mm, y0: p.y0_mm, w: p.w_mm, fromSheet: true, sizeKnown: true };
+      how = `Sheet "${p.sheet || src.name}": placed exactly as printed. Press Auto-align to correct for where the robot really started.`;
+    } else {
+      let ppm = src.info.pxPerMm;
+      if (src.isSvg) ppm = 96 / 25.4;
+      const known = ppm && ppm > 1.9 && ppm < 200;
+      const cfgLen = parseFloat($('cfg-row_len').value);
+      const wmm = known ? nw / ppm : (Number.isFinite(cfgLen) ? Math.max(20, cfgLen - 8) : 150);
+      place = defaultTplPlace(Math.round(wmm * 10) / 10);
+      place.sizeKnown = !!known;
+      how = (known ? `Size from the file: ${fmt(wmm, 1)} mm wide. ` : 'The file doesn\'t say its printed size: set the width you printed it at. ')
+        + 'Press Auto-align to find where it sits under the scan.';
+    }
+    const wmm = place.w, hmm = wmm * nh / nw;
+    // Darkness samples at TPL_R per mm (capped for very large pictures).
+    const R = Math.min(TPL_R, 3000 / Math.max(wmm, hmm));
+    const cw = Math.max(2, Math.round(wmm * R)), ch = Math.max(2, Math.round(hmm * R));
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, cw, ch);
+    g.drawImage(im, 0, 0, cw, ch);
+    const px = g.getImageData(0, 0, cw, ch).data;
+    const dark = new Float32Array(cw * ch);
+    for (let i = 0; i < cw * ch; i++) dark[i] = 1 - (0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2]) / 255;
+    tpl = {
+      name: src.name, url: src.url, info: src.info, isSvg: src.isSvg, nw, nh,
+      w: wmm, h: hmm, x0: place.x0, y0: place.y0, sx: place.sx || 1, sy: place.sy || 1,
+      fromSheet: !!place.fromSheet, sizeKnown: !!place.sizeKnown, R: cw / wmm, cw, ch, dark, blurred: null, blurSigma: -1,
+    };
+    $('tpl-name').textContent = src.name;
+    ['tpl-w', 'tpl-x', 'tpl-y'].forEach((id) => ($(id).disabled = false));
+    $('tpl-align').disabled = false; $('tpl-clear').disabled = false;
+    writeTplFields();
+    setMsg(msg, how);
+    saveTemplate();
+    render(true);
+  }
+
+  function writeTplFields() {
+    $('tpl-w').value = String(Math.round(tpl.w * 10) / 10);
+    $('tpl-x').value = String(Math.round(tpl.x0 * 10) / 10);
+    $('tpl-y').value = String(Math.round(tpl.y0 * 10) / 10);
+  }
+
+  function saveTemplate() {
+    try {
+      if (!tpl) { localStorage.removeItem(TPL_KEY); return; }
+      const v = { name: tpl.name, url: tpl.url, info: tpl.info, isSvg: tpl.isSvg,
+        place: { x0: tpl.x0, y0: tpl.y0, w: tpl.w, sx: tpl.sx, sy: tpl.sy, fromSheet: tpl.fromSheet, sizeKnown: tpl.sizeKnown } };
+      localStorage.setItem(TPL_KEY, JSON.stringify(v));
+    } catch (e) { /* too big for storage, or storage unavailable: fine for this visit */ }
+  }
+  async function restoreTemplate() {
+    try {
+      const v = JSON.parse(localStorage.getItem(TPL_KEY) || 'null');
+      if (v && v.url) await setTemplate(v, v.place);
+    } catch (e) { /* ignore */ }
+  }
+
+  // Darkness of the template at a world point (NaN outside the picture).
+  function tplArray(blurMm) {
+    if (!(blurMm > 0)) return tpl.dark;
+    if (tpl.blurSigma !== blurMm) {
+      const k = gaussKernel(blurMm * tpl.R);
+      tpl.blurred = convolve(tpl.dark, tpl.cw, tpl.ch, k);
+      tpl.blurSigma = blurMm;
+    }
+    return tpl.blurred;
+  }
+  function tplSampler(arr, x0, y0, sx, sy) {
+    const R = tpl.R, cw = tpl.cw, ch = tpl.ch, h = tpl.h;
+    return (x, y) => {
+      const u = Math.floor(((x - x0) / sx) * R), v = Math.floor((h - (y - y0) / sy) * R);
+      return (u < 0 || v < 0 || u >= cw || v >= ch) ? NaN : arr[v * cw + u];
+    };
+  }
+
+  // Compares the shown scan with the template, cell by cell.
+  function compareTemplate(r, shown, sample) {
+    const W = r.W, H = r.H, cell = r.cell;
+    const diff = new Float32Array(W * H).fill(NaN);
+    let n = 0, sAbs = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+    for (let j = 0; j < H; j++) {
+      const y = r.minY + (j + 0.5) * cell;
+      for (let i = 0; i < W; i++) {
+        const v = shown[j * W + i];
+        if (Number.isNaN(v)) continue;
+        const t = sample(r.minX + (i + 0.5) * cell, y);
+        if (Number.isNaN(t)) continue;
+        diff[j * W + i] = v - t;
+        n++; sAbs += Math.abs(v - t);
+        sa += v; sb += t; saa += v * v; sbb += t * t; sab += v * t;
+      }
+    }
+    const cov = sab / n - (sa / n) * (sb / n);
+    const va = saa / n - (sa / n) ** 2, vb = sbb / n - (sb / n) ** 2;
+    return { n, mae: n ? sAbs / n : NaN, corr: n && va > 1e-9 && vb > 1e-9 ? cov / Math.sqrt(va * vb) : NaN, area: n * cell * cell, diff };
+  }
+
+  const hexRgb = (h) => {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(h || '');
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [128, 128, 128];
+  };
+
+  function drawTemplate() {
+    const show = recCache.show, r = rec;
+    const canv = ['tpl-c-ref', 'tpl-c-scan', 'tpl-c-diff'].map($);
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = Math.max(120, canv[0].parentElement.clientWidth);
+    const aspect = r ? (r.H / r.W) : 0.7;
+    const cssH = Math.max(80, Math.min(420, cssW * aspect));
+    for (const c of canv) {
+      c.style.height = cssH + 'px';
+      c.width = Math.round(cssW * dpr); c.height = Math.round(cssH * dpr);
+      const g = c.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.fillStyle = hatchPattern(g, dpr); g.fillRect(0, 0, c.width, c.height);
+    }
+    const ro = (id, t) => ($(id).textContent = t);
+    if (!r || !show) { tplStats = null; ['tpl-err', 'tpl-corr', 'tpl-area'].forEach((id) => ro(id, '–')); }
+    // Robot scan: the same bitmap as the main image (tone applied).
+    if (r && show) {
+      const g = canv[1].getContext('2d');
+      g.imageSmoothingEnabled = imageOpts().smooth;
+      g.drawImage(off, 0, 0, canv[1].width, canv[1].height);
+    }
+    if (!tpl) { ro('tpl-sc', '–'); return; }
+    ro('tpl-sc', `${fmt(tpl.sx, 3)} / ${fmt(tpl.sy, 3)}`);
+    if (!r) return;
+    const o = imageOpts();
+    const arr = tplArray($('tpl-blur').checked ? o.blur : 0);
+    const sample = tplSampler(arr, tpl.x0, tpl.y0, tpl.sx, tpl.sy);
+    // Template over the scanned area, one sample per canvas pixel.
+    {
+      const c = canv[0], g = c.getContext('2d');
+      const im = g.createImageData(c.width, c.height);
+      const wx = r.W * r.cell, wy = r.H * r.cell;
+      for (let py = 0; py < c.height; py++) {
+        const y = r.minY + wy * (1 - (py + 0.5) / c.height);
+        for (let pxl = 0; pxl < c.width; pxl++) {
+          const t = sample(r.minX + wx * (pxl + 0.5) / c.width, y);
+          if (Number.isNaN(t)) continue;
+          const q = (py * c.width + pxl) * 4, gv = Math.round(255 * (1 - t));
+          im.data[q] = gv; im.data[q + 1] = gv; im.data[q + 2] = gv; im.data[q + 3] = 255;
+        }
+      }
+      g.putImageData(im, 0, 0);
+    }
+    const st = compareTemplate(r, show, sample);
+    tplStats = st;
+    ro('tpl-err', st.n ? fmt(st.mae * 100, 1) + '%' : '–');
+    ro('tpl-corr', Number.isFinite(st.corr) ? fmt(st.corr, 3) : '–');
+    ro('tpl-area', st.n ? `${fmt(st.area / 100, 0)} cm²` : 'no overlap');
+    // Difference: extra ink (scan darker) and missed ink (template darker).
+    {
+      const more = hexRgb(css('--diff-more')), less = hexRgb(css('--diff-less'));
+      const t = document.createElement('canvas');
+      t.width = r.W; t.height = r.H;
+      const g = t.getContext('2d'), im = g.createImageData(r.W, r.H);
+      for (let j = 0; j < r.H; j++) {
+        const row = r.H - 1 - j;
+        for (let i = 0; i < r.W; i++) {
+          const d = st.diff[j * r.W + i];
+          if (Number.isNaN(d)) continue;
+          const a = Math.min(1, Math.abs(d) * 1.4), col = d > 0 ? more : less;
+          const q = (row * r.W + i) * 4;
+          for (let k = 0; k < 3; k++) im.data[q + k] = Math.round(255 + (col[k] - 255) * a);
+          im.data[q + 3] = 255;
+        }
+      }
+      g.putImageData(im, 0, 0);
+      const cg = canv[2].getContext('2d');
+      cg.imageSmoothingEnabled = o.smooth;
+      cg.drawImage(t, 0, 0, canv[2].width, canv[2].height);
+    }
+  }
+
+  // Finds where the template sits under the scan (and its scale) by
+  // maximising the correlation between the two.
+  function autoAlignTemplate() {
+    const msg = $('tpl-msg');
+    const r = rec, show = recCache.show;
+    if (!tpl || !r || !show) { setMsg(msg, 'Scan something first (or load a CSV), then align.', true); return; }
+    const o = imageOpts();
+    const arr = tplArray(Math.max(o.blur, 1.5));
+    // Scan points on a ~2 mm grid (averaged), and on the full grid for the final step.
+    const pts = (step) => {
+      const f = Math.max(1, Math.round(step / r.cell));
+      const X = [], Y = [], V = [];
+      for (let j = 0; j + f <= r.H; j += f) for (let i = 0; i + f <= r.W; i += f) {
+        let s = 0, c = 0;
+        for (let b = 0; b < f; b++) for (let a = 0; a < f; a++) { const v = show[(j + b) * r.W + i + a]; if (!Number.isNaN(v)) { s += v; c++; } }
+        if (c * 2 >= f * f) { X.push(r.minX + (i + f / 2) * r.cell); Y.push(r.minY + (j + f / 2) * r.cell); V.push(s / c); }
+      }
+      return { X: Float32Array.from(X), Y: Float32Array.from(Y), V: Float32Array.from(V) };
+    };
+    const coarse = pts(2), fine = pts(r.cell);
+    if (coarse.V.length < 20) { setMsg(msg, 'Not enough of the scan to align with.', true); return; }
+    const score = (P, x0, y0, sx, sy) => {
+      const s = tplSampler(arr, x0, y0, sx, sy);
+      let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+      for (let k = 0; k < P.V.length; k++) {
+        const t = s(P.X[k], P.Y[k]);
+        if (Number.isNaN(t)) continue;
+        const v = P.V[k];
+        n++; sa += v; sb += t; saa += v * v; sbb += t * t; sab += v * t;
+      }
+      if (n < P.V.length * 0.4) return -2;
+      const va = saa / n - (sa / n) ** 2, vb = sbb / n - (sb / n) ** 2;
+      return va > 1e-9 && vb > 1e-9 ? (sab / n - (sa / n) * (sb / n)) / Math.sqrt(va * vb) : -2;
+    };
+    const before = { x0: tpl.x0, y0: tpl.y0, sx: tpl.sx, sy: tpl.sy };
+    let best = { ...before, sc: score(coarse, tpl.x0, tpl.y0, tpl.sx, tpl.sy) };
+    const tryAt = (P, x0, y0, sx, sy) => { const v = score(P, x0, y0, sx, sy); if (v > best.sc) best = { x0, y0, sx, sy, sc: v }; };
+    // 1) Position: near the expected place for a known sheet, anywhere overlapping otherwise.
+    const ax0 = r.minX, ax1 = r.minX + r.W * r.cell, ay0 = r.minY, ay1 = r.minY + r.H * r.cell;
+    const tw = tpl.w * tpl.sx, th = tpl.h * tpl.sy;
+    let xs, ys;
+    if (tpl.fromSheet) { xs = [tpl.x0 - 20, tpl.x0 + 20]; ys = [tpl.y0 - 20, tpl.y0 + 20]; }
+    else { xs = [ax0 - tw + 0.3 * (ax1 - ax0), ax1 - 0.3 * (ax1 - ax0)]; ys = [ay0 - th + 0.3 * (ay1 - ay0), ay1 - 0.3 * (ay1 - ay0)]; }
+    for (let x0 = xs[0]; x0 <= xs[1]; x0 += 2) for (let y0 = ys[0]; y0 <= ys[1]; y0 += 2) tryAt(coarse, x0, y0, best.sx, best.sy);
+    // 2) Scale (about the middle of the scan, so content there stays put).
+    if ($('tpl-scale').checked) {
+      const cx = (ax0 + ax1) / 2, cy = (ay0 + ay1) / 2;
+      for (let pass = 0; pass < 2; pass++) {
+        const b = { ...best };
+        const ux = (cx - b.x0) / b.sx, uy = (cy - b.y0) / b.sy;
+        const lim = tpl.sizeKnown ? 0.06 : 0.1;
+        for (let sx = 1 - lim; sx <= 1 + lim + 1e-4; sx += 0.01) for (let sy = 1 - lim; sy <= 1 + lim + 1e-4; sy += 0.01) {
+          for (let dx = -2; dx <= 2; dx += 2) for (let dy = -2; dy <= 2; dy += 2) {
+            tryAt(coarse, cx - ux * sx + dx, cy - uy * sy + dy, sx, sy);
+          }
+        }
+      }
+    }
+    // 3) Fine position (and scale) on the full grid.
+    best.sc = score(fine, best.x0, best.y0, best.sx, best.sy);
+    const b0 = { ...best };
+    for (let dx = -1.5; dx <= 1.5; dx += 0.25) for (let dy = -1.5; dy <= 1.5; dy += 0.25) tryAt(fine, b0.x0 + dx, b0.y0 + dy, b0.sx, b0.sy);
+    if ($('tpl-scale').checked) {
+      const b1 = { ...best };
+      for (let ds = -0.006; ds <= 0.0061; ds += 0.002) for (let dt = -0.006; dt <= 0.0061; dt += 0.002) tryAt(fine, b1.x0, b1.y0, b1.sx + ds, b1.sy + dt);
+    }
+    if (best.sc <= -1) { setMsg(msg, 'Could not find the template under the scan. Check the printed width.', true); return; }
+    Object.assign(tpl, { x0: best.x0, y0: best.y0, sx: best.sx, sy: best.sy });
+    writeTplFields(); saveTemplate();
+    let text = `Aligned (match ${fmt(best.sc, 3)}): moved ${fmt(best.x0 - before.x0, 1)} mm along the rows, ${fmt(best.y0 - before.y0, 1)} mm across.`;
+    if ($('tpl-scale').checked) {
+      text += ` Scale ${fmt(best.sx, 3)} along the rows, ${fmt(best.sy, 3)} across.`;
+      const rl = parseFloat($('cfg-r_left').value), rr = parseFloat($('cfg-r_right').value);
+      if (!tpl.sizeKnown) {
+        text += ' The printed width was a guess, so the scale mostly corrects that: type the real width and align again.';
+      } else if (Math.abs(best.sx - 1) >= 0.005 && Number.isFinite(rl) && Number.isFinite(rr)) {
+        const rNow = (rl + rr) / 2;
+        text += ` The scan is ${fmt(Math.abs(best.sx - 1) * 100, 1)}% ${best.sx > 1 ? 'longer' : 'shorter'} than the print along the rows, so the odometry ${best.sx > 1 ? 'over' : 'under'}-counts distance: wheel radius ≈ ${fmt(rNow / best.sx, 2)} mm (now ${fmt(rNow, 2)}) if the print is true to size.`;
+      }
+    }
+    setMsg(msg, text);
+    render(true);
+  }
+
+  $('tpl-in').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (f) await loadTemplateFile(f);
+  });
+  $('tpl-align').addEventListener('click', () => {
+    setMsg($('tpl-msg'), 'Aligning…');
+    setTimeout(autoAlignTemplate, 30);
+  });
+  $('tpl-clear').addEventListener('click', () => {
+    tpl = null; saveTemplate();
+    $('tpl-name').textContent = 'No template';
+    ['tpl-w', 'tpl-x', 'tpl-y'].forEach((id) => { $(id).value = ''; $(id).disabled = true; });
+    $('tpl-align').disabled = true; $('tpl-clear').disabled = true;
+    setMsg($('tpl-msg'), 'Template removed.');
+    render(true);
+  });
+  for (const id of ['tpl-w', 'tpl-x', 'tpl-y']) {
+    $(id).addEventListener('change', async () => {
+      if (!tpl) return;
+      const v = parseFloat($(id).value);
+      if (!Number.isFinite(v)) { writeTplFields(); return; }
+      if (id === 'tpl-x') tpl.x0 = v;
+      if (id === 'tpl-y') tpl.y0 = v;
+      if (id === 'tpl-w' && v >= 5) {
+        // A new printed size: rebuild the samples at that size, keep the position.
+        await setTemplate({ name: tpl.name, url: tpl.url, info: tpl.info, isSvg: tpl.isSvg },
+          { x0: tpl.x0, y0: tpl.y0, w: v, sx: 1, sy: 1, fromSheet: tpl.fromSheet, sizeKnown: true,
+            how: `Printed width set to ${fmt(v, 1)} mm. Press Auto-align to fit it under the scan again.` });
+        return;
+      }
+      saveTemplate(); render(true);
+    });
+  }
+  $('tpl-blur').addEventListener('change', () => render(true));
+
   // ----------------------------------------------------------------- wiring
   for (const b of document.querySelectorAll('#view-seg button')) {
     b.addEventListener('click', () => { if (!b.disabled) setView(b.dataset.view); });
@@ -1675,6 +2109,7 @@ label.file span {
   syncPatternFields();
   updateEstimate();
   runDemo(false);          // open with a finished demo scan so the page is never empty
+  restoreTemplate();
   setConnChip();
   if (base !== null) { pollStatus(); pollData(); }
 })();
